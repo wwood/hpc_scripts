@@ -20,6 +20,11 @@ import tempfile
 import subprocess
 import getpass
 import shutil
+import re
+from datetime import date
+import json
+import time
+from smtplib import SMTP
 
 ## Code below copied from the extern python package. Copy the code here so there are no dependencies.
 
@@ -70,11 +75,47 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
 
     def __str__(self):
         return "Command %s returned non-zero exit status %i.\n"\
-            "STDERR was: %sSTDOUT was: %s" % (self.command,
-                                                self.returncode,
-                                                self.stderr,
-                                                self.stdout)
+            "STDERR was: %sSTDOUT was: %s" % (
+                self.command,
+                self.returncode,
+                self.stderr,
+                self.stdout)
 
+
+class PbsJobInfo:
+    @staticmethod
+    def json(job_id):
+        return json.loads(run("qstat -x -f {} -F json".format(job_id)))['Jobs'][job_id]
+
+    @staticmethod
+    def status(job_id):
+        json_result = PbsJobInfo.json(job_id)
+        return json_result['job_state']
+
+    @staticmethod
+    def stdout_and_stderr_paths(job_id):
+        json_result = PbsJobInfo.json(job_id)
+        reg = re.compile("^.*?:(.*)$")
+        out1 = json_result['Output_Path']
+        err1 = json_result['Error_Path']
+        return reg.match(out1)[1], reg.match(err1)[1]
+
+    @staticmethod
+    def job_status_english(state):
+        states = {}
+        states['B'] = 'Array job has at least one subjob running'
+        states['E'] = 'Job is exiting after having run'
+        states['F'] = 'Job is finished'
+        states['H'] = 'Job is held'
+        states['M'] = 'Job was moved to another server'
+        states['Q'] = 'Job is queued'
+        states['R'] = 'Job is running'
+        states['S'] = 'Job is suspended'
+        states['T'] = 'Job is being moved to new location'
+        states['U'] = 'Cycle-harvesting job is suspended due to keyboard activity'
+        states['W'] = 'Job is waiting for its submitter-assigned start time to be reached'
+        states['X'] = 'Subjob has completed execution or has been deleted'
+        return states[state]
 
 
 
@@ -93,17 +134,13 @@ if __name__ == '__main__':
     parser.add_argument('--hours',default=24*7,type=int, help="Hours to run for [default: 1 week]")
     parser.add_argument('--name', help="Name of the job [default: first word of command]")
     parser.add_argument('--dry-run',action='store_true', help="Print script to STDOUT and do not lodge it with qsub")
-    parser.add_argument('command',nargs='+',help='command to be run')
-
-    # for (i, arg) in sys.argv:
-    #     if arg == '--':
-    #         cmd = sys.argv[i+1:]
-    #         predash_arguments = sys.argv[:i]
-
-    # if cmd is None:
-    #     parser.parse_args('')
-    #     cmd = args.command
-    # else:
+    parser.add_argument('--follow',action='store_true', help="Submit the job, then wait until it is finished before exiting")
+    parser.add_argument('--no-email',action='store_true', help="Do not send any emails, either on job finishing or aborting")
+    parser.add_argument('--script', help='Script to run, or "-" for STDIN')
+    parser.add_argument('--script-shell', help='Run script specified in --script with this shell [default: /bin/bash]', default='/bin/bash')
+    parser.add_argument('--script-tmpdir', help="When '--script -' is specified, write the script to this location as a temporary file", default='/lustre/scratch/microbiome/tmp')
+    parser.add_argument('--poll-interval', help="When '--follow' is specified, poll the PBS server once every this many seconds [default: 30]", type=int, default=30)
+    parser.add_argument('command',nargs='*',help='command to be run')
     args = parser.parse_args()
 
     # Setup logging
@@ -115,6 +152,18 @@ if __name__ == '__main__':
         loglevel = logging.INFO
     logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
+    SCRIPT = 'script'
+    COMMAND = 'command'
+
+    if args.script:
+        content_type = SCRIPT
+        if len(args.command) != 0:
+            raise Exception("Cannot specify both --script and a command")
+    elif len(args.command) > 0:
+        content_type = COMMAND
+    else:
+        raise Exception("Must specify either --script-stdin or a command")
+
     with tempfile.NamedTemporaryFile(prefix='mqsub_script',suffix='.sh',mode='w') as tf:
         if args.dry_run:
             tf = sys.stdout
@@ -122,6 +171,11 @@ if __name__ == '__main__':
         cmd = args.command
         if args.name:
             jobname = args.name
+        elif content_type == SCRIPT:
+            if args.script == '-':
+                jobname = 'stdin_mqsub'
+            else:
+                jobname = os.path.basename(args.script)
         else:
             jobname = cmd[0]
         logging.debug("Naming job as: {}".format(jobname))
@@ -130,18 +184,22 @@ if __name__ == '__main__':
         email = '{}@qut.edu.au'.format(whoami)
         logging.debug("Using email address: {}".format(email))
 
-        exe = cmd[0]
-        logging.debug("Testing if executable {} is available in $PATH".format(exe))
-        if shutil.which(exe) is None:
-            raise Exception("The executable {} is not available, not continuing".format(exe))
-        logging.debug("Executable was available, seems all good")
+        if content_type == COMMAND:
+            exe = cmd[0]
+            logging.debug("Testing if executable {} is available in $PATH".format(exe))
+            if shutil.which(exe) is None:
+                raise Exception("The executable {} is not available, not continuing".format(exe))
+            logging.debug("Executable was available, seems all good")
+        else:
+            logging.debug("Not checking for executable availability as args.command not defined")
 
         print('#!/bin/bash -l',file=tf)
         print('#PBS -N {}'.format(jobname),file=tf)
         print('#PBS -l ncpus={}'.format(args.cpus),file=tf)
         print('#PBS -l mem={}gb'.format(args.mem),file=tf)
         print('#PBS -l walltime={}:00:00'.format(args.hours),file=tf)
-        print('#PBS -m ae',file=tf)
+        if not args.no_email and not args.follow:
+            print('#PBS -m ae',file=tf)
         print('#PBS -M {}'.format(email),file=tf)
         if args.directive:
             print('#PBS {}'.format(args.directive),file=tf)
@@ -157,12 +215,98 @@ if __name__ == '__main__':
             print('. /pkg/suse12/software/miniconda3/4.5.12/etc/profile.d/conda.sh',file=tf)
             print('conda activate',file=tf)
             print("source activate '{}'".format(current_conda_env),file=tf)
-        
-        print(' '.join(cmd),file=tf)
+
+        if content_type == COMMAND:
+            print(' '.join(cmd),file=tf)
+        elif content_type == SCRIPT:
+            if args.script == '-':
+                with tempfile.NamedTemporaryFile(
+                    prefix='mqsub_stdin_{}_{}'.format(getpass.getuser(), date.today().strftime("%d%m%Y")),
+                    suffix='.sh',
+                    dir=args.script_tmpdir,
+                    delete=False,
+                    mode='w') as stdin_tf:
+
+                    script_path = stdin_tf.name
+                    line_count = 0
+                    for l in sys.stdin:
+                        stdin_tf.write(l)
+                        line_count += 1
+                    logging.info("Wrote {} lines of stdin to the tempfile {}".format(line_count, script_path))
+                # Delete the script after completion so it cleans up, but keep the exitstatus of the original script as the exitstatus of the qsub
+                print('{} {} && rm {}'.format(args.script_shell, script_path, script_path),file=tf)
+            else:
+                script_path = args.script
+                print('{} {}'.format(args.script_shell, script_path),file=tf)
+
         tf.flush()
 
         if args.dry_run:
             logging.info("Not running qsub since this is a dry run")
+            sys.exit(0)
         else:
-            qsub_stdout = run("qsub {}".format(tf.name))
-            print("qsub stdout: {}".format(qsub_stdout), file=sys.stderr)
+            qsub_stdout = run("qsub {}".format(tf.name)).decode()
+            logging.info("qsub stdout was: {}".format(qsub_stdout.rstrip()))
+            if args.follow:
+                match_result = re.compile('^(\d+\.pbs)\n$').match(qsub_stdout)
+                if match_result is None:
+                    raise Exception("Unexpected output from qsub: {}".format(qsub_stdout))
+                else:
+                    job_id = match_result[1]
+
+                last_status = PbsJobInfo.json(job_id)['job_state']
+                logging.debug('Status of job is now: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                while True:
+                    if last_status == 'F':
+                        break
+
+                    current_job_status = PbsJobInfo.json(job_id)['job_state']
+                    if current_job_status != last_status:
+                        logging.info('Status of job is now: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                        last_status = current_job_status
+
+                    if last_status == 'F':
+                        break
+
+                    logging.debug('Not finished (is {}), sleeping for {} seconds'.format(last_status, args.poll_interval))
+                    time.sleep(args.poll_interval)
+
+                logging.info("Job has finished")
+
+                j = PbsJobInfo.json(job_id)
+                exit_status = j['Exit_status']
+                if exit_status != 0:
+                    logging.error("Script appears to have failed. Exited with exit code {}".format(exit_status))
+                r = j['resources_used']
+                logging.info("resources_used.walltime: {}".format(r['walltime']))
+                logging.info("resources_used.cpupercent: {}".format(r['cpupercent']))
+                logging.info("resources_used.cput: {}".format(r['cput']))
+                logging.info("resources_used.vmem: {}".format(r['vmem']))
+
+                stdout_path, stderr_path = PbsJobInfo.stdout_and_stderr_paths(job_id)
+                with open(stdout_path,'r') as f: # Possible this might fail if the stdout is binary?
+                    shutil.copyfileobj(f, sys.stdout)
+                with open(stderr_path,'r') as f:
+                    shutil.copyfileobj(f, sys.stderr)
+
+                if not args.no_email:
+                    msg = "exit status: {}\n".format(exit_status)\
+                        +"resources_used.walltime: {}\n".format(r['walltime'])\
+                        +"resources_used.cpupercent: {}\n".format(r['cpupercent'])\
+                        +"resources_used.cput: {}\n".format(r['cput'])\
+                        +"resources_used.vmem: {}\n".format(r['vmem'])\
+                        +"\n this message was sent by mqsub.\n"
+                    if exit_status == 0:
+                        subject = 'mqsub process {} finished running with exit status 0'.format(jobname)
+                    else:
+                        subject = 'FAIL: mqsub process {} finished running with exit status {}'.format(jobname, exit_status)
+                    with SMTP(host='localhost',port=0) as smtp:
+                        smtp.sendmail('CMR_HPC',email,'Subject: {}\n\n{}'.format(subject,msg))
+
+                os.remove(stdout_path)
+                os.remove(stderr_path)
+                sys.exit(exit_status)
+
+            else:
+                print("qsub stdout: {}".format(qsub_stdout), file=sys.stderr)
+
