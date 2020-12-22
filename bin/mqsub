@@ -198,7 +198,7 @@ if __name__ == '__main__':
         print('#PBS -l ncpus={}'.format(args.cpus),file=tf)
         print('#PBS -l mem={}gb'.format(args.mem),file=tf)
         print('#PBS -l walltime={}:00:00'.format(args.hours),file=tf)
-        if not args.no_email and args.bg:
+        if args.bg and not args.no_email:
             print('#PBS -m ae',file=tf)
         print('#PBS -M {}'.format(email),file=tf)
         if args.directive:
@@ -290,12 +290,18 @@ if __name__ == '__main__':
                     shutil.copyfileobj(f, sys.stderr)
 
                 if not args.no_email:
-                    msg = "exit status: {}\n".format(exit_status)\
+                    msg = "job: {}\n".format(job_id)\
+                        +"exit status: {}\n".format(exit_status)\
                         +"resources_used.walltime: {}\n".format(r['walltime'])\
                         +"resources_used.cpupercent: {}\n".format(r['cpupercent'])\
                         +"resources_used.cput: {}\n".format(r['cput'])\
-                        +"resources_used.vmem: {}\n".format(r['vmem'])\
-                        +"\n this message was sent by mqsub.\n"
+                        +"resources_used.vmem: {}\n".format(r['vmem'])
+                    if content_type == SCRIPT:
+                        msg = msg+"\nscript_path: {}\n".format(args.script)
+                    else:
+                        msg = msg+"\ncommand: {}\n".format(' '.join(args.command))
+                    msg = msg+"\n this message was sent by mqsub.\n"
+
                     if exit_status == 0:
                         subject = 'mqsub process {} finished running with exit status 0'.format(jobname)
                     else:
