@@ -255,7 +255,7 @@ if __name__ == '__main__':
                     job_id = match_result[1]
 
                 last_status = PbsJobInfo.json(job_id)['job_state']
-                logging.debug('Status of job is now: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                logging.info('Status of job is now: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
                 while True:
                     if last_status == 'F':
                         break
