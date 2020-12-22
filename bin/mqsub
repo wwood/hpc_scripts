@@ -134,12 +134,12 @@ if __name__ == '__main__':
     parser.add_argument('--hours',default=24*7,type=int, help="Hours to run for [default: 1 week]")
     parser.add_argument('--name', help="Name of the job [default: first word of command]")
     parser.add_argument('--dry-run',action='store_true', help="Print script to STDOUT and do not lodge it with qsub")
-    parser.add_argument('--follow',action='store_true', help="Submit the job, then wait until it is finished before exiting")
+    parser.add_argument('--bg',action='store_true', help="Submit the job, then quit [default: wait until job is finished before exiting]")
     parser.add_argument('--no-email',action='store_true', help="Do not send any emails, either on job finishing or aborting")
     parser.add_argument('--script', help='Script to run, or "-" for STDIN')
     parser.add_argument('--script-shell', help='Run script specified in --script with this shell [default: /bin/bash]', default='/bin/bash')
     parser.add_argument('--script-tmpdir', help="When '--script -' is specified, write the script to this location as a temporary file", default='/lustre/scratch/microbiome/tmp')
-    parser.add_argument('--poll-interval', help="When '--follow' is specified, poll the PBS server once every this many seconds [default: 30]", type=int, default=30)
+    parser.add_argument('--poll-interval', help="Poll the PBS server once every this many seconds [default: 30]", type=int, default=30)
     parser.add_argument('command',nargs='*',help='command to be run')
     args = parser.parse_args()
 
@@ -198,7 +198,7 @@ if __name__ == '__main__':
         print('#PBS -l ncpus={}'.format(args.cpus),file=tf)
         print('#PBS -l mem={}gb'.format(args.mem),file=tf)
         print('#PBS -l walltime={}:00:00'.format(args.hours),file=tf)
-        if not args.no_email and not args.follow:
+        if not args.no_email and args.bg:
             print('#PBS -m ae',file=tf)
         print('#PBS -M {}'.format(email),file=tf)
         if args.directive:
@@ -247,7 +247,7 @@ if __name__ == '__main__':
         else:
             qsub_stdout = run("qsub {}".format(tf.name)).decode()
             logging.info("qsub stdout was: {}".format(qsub_stdout.rstrip()))
-            if args.follow:
+            if not args.bg:
                 match_result = re.compile('^(\d+\.pbs)\n$').match(qsub_stdout)
                 if match_result is None:
                     raise Exception("Unexpected output from qsub: {}".format(qsub_stdout))
