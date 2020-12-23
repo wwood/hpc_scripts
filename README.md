@@ -11,7 +11,7 @@ waits for the result and then emails you to say it is done.
 A straightforward example:
 
 ```
-$ ./mqsub -- echo hello world
+$ mqsub -- echo hello world
 12/23/2020 10:05:36 AM INFO: qsub stdout was: 8690514.pbs
 12/23/2020 10:05:36 AM INFO: Status of job is now: Q: Job is queued
 12/23/2020 10:09:07 AM INFO: Status of job is now: R: Job is running
