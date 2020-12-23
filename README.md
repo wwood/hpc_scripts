@@ -12,14 +12,14 @@ A straightforward example:
 
 ```
 $ mqsub -- echo hello world
-12/23/2020 10:05:36 AM INFO: qsub stdout was: 8690514.pbs
-12/23/2020 10:05:36 AM INFO: Status of job is now: Q: Job is queued
-12/23/2020 10:09:07 AM INFO: Status of job is now: R: Job is running
-12/23/2020 10:09:07 AM INFO: Job has finished
-12/23/2020 10:09:07 AM INFO: resources_used.walltime: 00:00:01
-12/23/2020 10:09:07 AM INFO: resources_used.cpupercent: 0
-12/23/2020 10:09:07 AM INFO: resources_used.cput: 00:00:00
-12/23/2020 10:09:07 AM INFO: resources_used.vmem: 48896kb
+12/23/2020 10:38:30 AM INFO: qsub stdout was: 8690551.pbs
+12/23/2020 10:38:30 AM INFO: First status of job is: Q: Job is queued
+12/23/2020 10:41:31 AM INFO: Now status of job is: F: Job is finished
+12/23/2020 10:41:31 AM INFO: Job has finished
+12/23/2020 10:41:31 AM INFO: resources_used.walltime: 00:00:01
+12/23/2020 10:41:31 AM INFO: resources_used.cpupercent: 0
+12/23/2020 10:41:31 AM INFO: resources_used.cput: 00:00:00
+12/23/2020 10:41:31 AM INFO: resources_used.vmem: 67728kb
 hello world
 ```
 
