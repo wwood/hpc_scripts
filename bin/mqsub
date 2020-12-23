@@ -120,12 +120,10 @@ class PbsJobInfo:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser()
     parser.add_argument('--debug', help='output debug information', action="store_true")
     #parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
     parser.add_argument('--quiet', help='only output errors', action="store_true")
-
-    #parser.add_argument("-c", "--conda_environment", "--conda-environment", help="Load this conda environment")
 
     parser.add_argument('-t','--cpus',default=1,type=int, help="Number of CPUs to queue job with [default: 1]")
     parser.add_argument('-m','--mem','--ram',default=4,type=int, help="GB of RAM to ask for [default: 4]")
