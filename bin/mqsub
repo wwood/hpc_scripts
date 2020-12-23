@@ -126,7 +126,7 @@ if __name__ == '__main__':
     parser.add_argument('--quiet', help='only output errors', action="store_true")
 
     parser.add_argument('-t','--cpus',default=1,type=int, help="Number of CPUs to queue job with [default: 1]")
-    parser.add_argument('-m','--mem','--ram',default=4,type=int, help="GB of RAM to ask for [default: 4]")
+    parser.add_argument('-m','--mem','--ram',type=int, help="GB of RAM to ask for [default: 4*num_cpus]")
     parser.add_argument('--directive', help="Arbitrary PBS directory to add e.g. '-l ngpus=1' to ask for a GPU [default: Not used]")
     parser.add_argument('-q','--queue', default='microbiome', help="Name of queue to send to, or '-' to not specify [default: microbiome]")
     parser.add_argument('--hours',default=24*7,type=int, help="Hours to run for [default: 1 week]")
@@ -166,6 +166,12 @@ if __name__ == '__main__':
         if args.dry_run:
             tf = sys.stdout
 
+        if args.mem is None:
+            mem = 4*args.cpus
+        else:
+            mem = args.mem
+        logging.debug("Using RAM {}".format(mem))
+
         cmd = args.command
         if args.name:
             jobname = args.name
@@ -194,7 +200,7 @@ if __name__ == '__main__':
         print('#!/bin/bash -l',file=tf)
         print('#PBS -N {}'.format(jobname),file=tf)
         print('#PBS -l ncpus={}'.format(args.cpus),file=tf)
-        print('#PBS -l mem={}gb'.format(args.mem),file=tf)
+        print('#PBS -l mem={}gb'.format(mem),file=tf)
         print('#PBS -l walltime={}:00:00'.format(args.hours),file=tf)
         if args.bg and not args.no_email:
             print('#PBS -m ae',file=tf)
@@ -260,7 +266,7 @@ if __name__ == '__main__':
 
                     current_job_status = PbsJobInfo.json(job_id)['job_state']
                     if current_job_status != last_status:
-                        logging.info('Status of job is now: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                        logging.info('Status of job is now: {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
                         last_status = current_job_status
 
                     if last_status == 'F':
