@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
-
-# Script to more easily submit jobs to the QUT HPC queuing system
+#!/usr/bin/env python3.4
 
 # Must be python3.4-compatible since that is what is on the lyra base
+
+# Script to more easily submit jobs to the QUT HPC queuing system
 
 __author__ = "Ben Woodcroft"
 __copyright__ = "Copyright 2020"
@@ -85,7 +85,7 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
 class PbsJobInfo:
     @staticmethod
     def json(job_id):
-        return json.loads(run("qstat -x -f {} -F json".format(job_id)))['Jobs'][job_id]
+        return json.loads(run("qstat -x -f {} -F json".format(job_id)).decode())['Jobs'][job_id]
 
     @staticmethod
     def status(job_id):
@@ -98,7 +98,7 @@ class PbsJobInfo:
         reg = re.compile("^.*?:(.*)$")
         out1 = json_result['Output_Path']
         err1 = json_result['Error_Path']
-        return reg.match(out1)[1], reg.match(err1)[1]
+        return reg.match(out1).group(1), reg.match(err1).group(1)
 
     @staticmethod
     def job_status_english(state):
@@ -256,10 +256,10 @@ if __name__ == '__main__':
                 if match_result is None:
                     raise Exception("Unexpected output from qsub: {}".format(qsub_stdout))
                 else:
-                    job_id = match_result[1]
+                    job_id = match_result.group(1)
 
                 last_status = PbsJobInfo.json(job_id)['job_state']
-                logging.info('First status of job is: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                logging.info('First status of job is {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
                 while True:
                     if last_status == 'F':
                         break
@@ -267,7 +267,7 @@ if __name__ == '__main__':
                     current_job_status = PbsJobInfo.json(job_id)['job_state']
                     if current_job_status != last_status:
                         logging.debug("last was '{}', current was '{}'".format(last_status, current_job_status))
-                        logging.info('Now status of job is: {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
+                        logging.info('Now status of job is {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
                         last_status = current_job_status
 
                     if last_status == 'F':
