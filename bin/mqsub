@@ -259,7 +259,7 @@ if __name__ == '__main__':
                     job_id = match_result[1]
 
                 last_status = PbsJobInfo.json(job_id)['job_state']
-                logging.info('Status of job is now: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                logging.info('First status of job is: {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
                 while True:
                     if last_status == 'F':
                         break
@@ -267,7 +267,7 @@ if __name__ == '__main__':
                     current_job_status = PbsJobInfo.json(job_id)['job_state']
                     if current_job_status != last_status:
                         logging.debug("last was '{}', current was '{}'".format(last_status, current_job_status))
-                        logging.info('Status of job is now: {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
+                        logging.info('Now status of job is: {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
                         last_status = current_job_status
 
                     if last_status == 'F':
