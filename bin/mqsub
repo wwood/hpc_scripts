@@ -260,6 +260,10 @@ if __name__ == '__main__':
 
         tf.flush()
 
+        def report_running_host(jobinfo):
+            if jobinfo['job_state'] == 'R':
+                logging.info("Job is running on exec_host {}".format(jobinfo['exec_host']))
+
         if args.dry_run:
             logging.info("Not running qsub since this is a dry run")
             sys.exit(0)
@@ -273,16 +277,20 @@ if __name__ == '__main__':
                 else:
                     job_id = match_result.group(1)
 
-                last_status = PbsJobInfo.json(job_id)['job_state']
+                last_jobinfo = PbsJobInfo.json(job_id)
+                last_status = last_jobinfo['job_state']
                 logging.info('First status of job is {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                report_running_host(last_jobinfo)
                 while True:
                     if last_status == 'F':
                         break
 
-                    current_job_status = PbsJobInfo.json(job_id)['job_state']
+                    current_job_info = PbsJobInfo.json(job_id)
+                    current_job_status = current_job_info['job_state']
                     if current_job_status != last_status:
                         logging.debug("last was '{}', current was '{}'".format(last_status, current_job_status))
                         logging.info('Now status of job is {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
+                        report_running_host(current_job_info)
                         last_status = current_job_status
 
                     if last_status == 'F':
