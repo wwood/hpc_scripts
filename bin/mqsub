@@ -194,7 +194,7 @@ if __name__ == '__main__':
                 logging.debug("Skipping executable check as requested")
             else:
                 exe = cmd[0]
-                environment_setting = re.compile('^[A-Z]+=')
+                environment_setting = re.compile('^[A-Z_]+=')
                 exe_index = 0
 
                 # Deal with e.g. PATH=extra:$PATH ...
