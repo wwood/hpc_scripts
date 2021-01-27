@@ -62,15 +62,15 @@ def run(command, stdin=None):
     stdout, stderr = process.communicate(stdin)
 
     if process.returncode != 0:
-        raise ExternCalledProcessError(process, command)
+        raise ExternCalledProcessError(process, command, stdout.decode(), stderr.decode())
     return stdout
 
 class ExternCalledProcessError(subprocess.CalledProcessError):
-    def __init__(self, completed_process, command):
+    def __init__(self, completed_process, command, stdout, stderr):
         self.command = command
         self.returncode = completed_process.returncode
-        self.stderr = completed_process.stderr
-        self.stdout = completed_process.stdout
+        self.stderr = stderr
+        self.stdout = stdout
         self.completed_process = completed_process
 
     def __str__(self):
