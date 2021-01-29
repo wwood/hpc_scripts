@@ -1,0 +1,137 @@
+#!/usr/bin/env python3.4
+
+# Must be python3.4-compatible since that is what is on the lyra base
+
+# Script to more easily submit jobs to the QUT HPC queuing system
+
+__author__ = "Ben Woodcroft"
+__copyright__ = "Copyright 2020"
+__credits__ = ["Ben Woodcroft"]
+__license__ = "GPL3"
+__maintainer__ = "Ben Woodcroft"
+__email__ = "benjwoodcroft near gmail.com"
+__status__ = "Development"
+
+import argparse
+import logging
+import sys
+import os
+import tempfile
+import subprocess
+import getpass
+import shutil
+import re
+from datetime import date
+import json
+import time
+from smtplib import SMTP
+
+## TODO: Code below copied from the mqsub script. Code shouldn't really be copied but imported.
+
+def run(command, stdin=None):
+    '''
+    Run a subprocess.check_output() with the given command with
+    'bash -c command'
+    returning the stdout. If the command fails (i.e. has a non-zero exitstatus),
+    raise a ExternCalledProcessError that includes the $stderr as part of
+    the error message
+
+    Parameters
+    ----------
+    command: str
+        command to run
+    stdin: str or None
+        stdin to be provided to the process, to subprocess.communicate.
+
+    Returns
+    -------
+    Standard output of the run command
+
+    Exceptions
+    ----------
+    extern.ExternCalledProcessError including stdout and stderr of the run
+    command should it return with non-zero exit status.
+    '''
+    #logging.debug("Running extern cmd: %s" % command)
+
+    using_stdin = stdin is not None
+    process = process = subprocess.Popen(
+        ["bash",'-o','pipefail',"-c", command],
+        stdin= (subprocess.PIPE if using_stdin else None),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate(stdin)
+
+    if process.returncode != 0:
+        raise ExternCalledProcessError(process, command, stdout.decode(), stderr.decode())
+    return stdout
+
+class ExternCalledProcessError(subprocess.CalledProcessError):
+    def __init__(self, completed_process, command, stdout, stderr):
+        self.command = command
+        self.returncode = completed_process.returncode
+        self.stderr = stderr
+        self.stdout = stdout
+        self.completed_process = completed_process
+
+    def __str__(self):
+        return "Command %s returned non-zero exit status %i.\n"\
+            "STDERR was: %sSTDOUT was: %s" % (
+                self.command,
+                self.returncode,
+                self.stderr,
+                self.stdout)
+
+
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', help='output debug information', action="store_true")
+    #parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
+    parser.add_argument('--quiet', help='only output errors', action="store_true")
+
+    args = parser.parse_args()
+
+    # Setup logging
+    if args.debug:
+        loglevel = logging.DEBUG
+    elif args.quiet:
+        loglevel = logging.ERROR
+    else:
+        loglevel = logging.INFO
+    logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+    overall_json = json.loads(run('qstat -f -F json').decode())['Jobs']
+    microbiome_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']=='microbiome'])
+
+    ## TODO:
+    # Use full name not short job status
+    # Report names not IDs for users
+    # Add amount of current runtime, rather than when it was started
+
+    print("\t".join([
+        'ID',
+        'owner',
+        'state',
+        'CPUs',
+        'RAM',
+        'walltime (hrs)',
+        'runtime',
+    ]))
+    for (jid, j) in microbiome_jobs:
+        if j['job_state']=='R':
+            runtime = 'started at {}'.format(j['stime'])
+        else:
+            runtime = '-'
+        print("\t".join([
+            jid,
+            j['Job_Owner'],
+            j['job_state'],
+            str(j['Resource_List']['ncpus']),
+            j['Resource_List']['mem'],
+            j['Resource_List']['walltime'].replace(':00:00',''),
+            runtime,
+        ]))
+
+
+    
