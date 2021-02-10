@@ -183,7 +183,6 @@ if __name__ == '__main__':
                 jobname = os.path.basename(args.script)
         else:
             jobname = cmd[0]
-        logging.debug("Naming job as: {}".format(jobname))
 
         whoami = getpass.getuser()
         email = '{}@qut.edu.au'.format(whoami)
@@ -204,6 +203,7 @@ if __name__ == '__main__':
                         raise Exception("Failed to parse an executable from the command given")
                     exe_index += 1
                     exe = cmd[exe_index]
+                    jobname = exe
 
                 logging.debug("Testing if executable {} is available in $PATH".format(exe))
                 if shutil.which(exe) is None:
@@ -211,6 +211,9 @@ if __name__ == '__main__':
                 logging.debug("Executable {} was available, seems all good", exe)
         else:
             logging.debug("Not checking for executable availability as args.command not defined")
+
+        jobname = jobname.replace("/","_")
+        logging.debug("Naming job as: {}".format(jobname))
 
         print('#!/bin/bash -l',file=tf)
         print('#PBS -N {}'.format(jobname),file=tf)
