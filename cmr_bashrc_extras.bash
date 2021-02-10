@@ -8,12 +8,9 @@ function notify { command "$@" && success || fail; }
 # export TMPDIR=/data1/tmp-$USER
 # mkdir -p $TMPDIR
 
-#check for nextflow config and source if none found
+#check for nextflow config
 if [[ ! -e ~/.nextflow/config ]]; then
-    source /work2/microbiome/sw/nextflow_config/config
+    NEXTFLOW_CONFIG=/work2/microbiome/sw/nextflow_config/config
 fi
 
-#re-sources cron-scheduled jobs
-#crontab -r
-#crontab /work2/microbiome/sw/hpc_scripts/bin/cron
 
