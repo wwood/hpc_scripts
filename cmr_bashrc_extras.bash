@@ -13,4 +13,5 @@ if [[ ! -e ~/.nextflow/config ]]; then
     NEXTFLOW_CONFIG=/work2/microbiome/sw/nextflow_config/config
 fi
 
-
+# Otherwise qaddtime is only available on lyra
+alias qaddtime=/pkg/hpc/scripts/qaddtime
