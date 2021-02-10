@@ -120,7 +120,11 @@ if __name__ == '__main__':
     ]))
     for (jid, j) in microbiome_jobs:
         if j['job_state']=='R':
-            runtime = 'started at {}'.format(j['stime'])
+            try:
+                runtime = 'started at {}'.format(j['stime'])
+            except KeyError:
+                # Occasional KeyError, maybe when the job just started?
+                runtime = '-'
         else:
             runtime = '-'
         print("\t".join([
