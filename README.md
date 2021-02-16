@@ -45,6 +45,7 @@ optional arguments:
                         Name of queue to send to, or '-' to not specify
                         [default: '-']
   --hours HOURS         Hours to run for [default: 1 week]
+  --weeks WEEKS         Weeks to run for [default 1]
   --name NAME           Name of the job [default: first word of command]
   --dry-run             Print script to STDOUT and do not lodge it with qsub
   --bg                  Submit the job, then quit [default: wait until job is

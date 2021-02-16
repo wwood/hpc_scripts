@@ -129,7 +129,9 @@ if __name__ == '__main__':
     parser.add_argument('-m','--mem','--ram',type=int, help="GB of RAM to ask for [default: 4*num_cpus]")
     parser.add_argument('--directive', help="Arbitrary PBS directory to add e.g. '-l ngpus=1' to ask for a GPU [default: Not used]")
     parser.add_argument('-q','--queue', default="-", help="Name of queue to send to, or '-' to not specify [default: '-']")
-    parser.add_argument('--hours',default=24*7,type=int, help="Hours to run for [default: 1 week]")
+    walltime_group = parser.add_mutually_exclusive_group()
+    walltime_group.add_argument('--hours',default=24*7,type=int, help="Hours to run for [default: 1 week]")
+    walltime_group.add_argument('--weeks',type=int,help="Weeks to run for [default 1]")
     parser.add_argument('--name', help="Name of the job [default: first word of command]")
     parser.add_argument('--dry-run',action='store_true', help="Print script to STDOUT and do not lodge it with qsub")
     parser.add_argument('--bg',action='store_true', help="Submit the job, then quit [default: wait until job is finished before exiting]")
@@ -215,11 +217,17 @@ if __name__ == '__main__':
         jobname = jobname.replace("/","_")
         logging.debug("Naming job as: {}".format(jobname))
 
+        hours = 'programming_error'
+        if args.weeks is not None:
+            hours = 168*args.weeks
+        else:
+            hours = args.hours
+
         print('#!/bin/bash -l',file=tf)
         print('#PBS -N {}'.format(jobname),file=tf)
         print('#PBS -l ncpus={}'.format(args.cpus),file=tf)
         print('#PBS -l mem={}gb'.format(mem),file=tf)
-        print('#PBS -l walltime={}:00:00'.format(args.hours),file=tf)
+        print('#PBS -l walltime={}:00:00'.format(hours),file=tf)
         if args.bg and not args.no_email:
             print('#PBS -m ae',file=tf)
         print('#PBS -M {}'.format(email),file=tf)
