@@ -176,7 +176,7 @@ if __name__ == '__main__':
             if server_regex.sub('',m[1]['exec_host']) in queue_nodes:
                 non_microbiome_jobs_on_our_nodes.append(m)
         num_non_microbiome_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in non_microbiome_jobs_on_our_nodes])
-        print("Non-microbiome jobs / CPU: {} / {} ({:.1f})".format(len(non_microbiome_jobs_on_our_nodes), num_non_microbiome_cpus_running, num_non_microbiome_cpus_running/total_cpus*100))
+        print("Non-microbiome jobs / CPU: {} / {} ({:.1f}%)".format(len(non_microbiome_jobs_on_our_nodes), num_non_microbiome_cpus_running, num_non_microbiome_cpus_running/total_cpus*100))
 
 
 
