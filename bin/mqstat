@@ -172,12 +172,15 @@ if __name__ == '__main__':
 
         my_comments = {}
         for m in my_jobs:
-            comment = m[1]['comment']
-            if 'Job run at' not in comment:
-                if comment in my_comments:
-                    my_comments[comment] += 1
-                else:
-                    my_comments[comment] = 1
+            try:
+                comment = m[1]['comment']
+                if 'Job run at' not in comment:
+                    if comment in my_comments:
+                        my_comments[comment] += 1
+                    else:
+                        my_comments[comment] = 1
+            except KeyError:
+                pass
         if len(my_comments) > 0:
             for (comment, count) in my_comments.items():
                 print("{} job comment: \"{}\" ({} jobs)".format(user, comment, count))
