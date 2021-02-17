@@ -170,6 +170,18 @@ if __name__ == '__main__':
         print("{} CPUs running: {} / {} ({:.1f}%)".format(user, num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
         print("{} CPUs queued: {}".format(user, num_cpus_not_running))
 
+        my_comments = {}
+        for m in my_jobs:
+            comment = m[1]['comment']
+            if 'Job run at' not in comment:
+                if comment in my_comments:
+                    my_comments[comment] += 1
+                else:
+                    my_comments[comment] = 1
+        if len(my_comments) > 0:
+            for (comment, count) in my_comments.items():
+                print("{} job comment: \"{}\" ({} jobs)".format(user, comment, count))
+
         other_running_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']!='microbiome' and j['job_state']=='R'])
         non_microbiome_jobs_on_our_nodes = []
         for m in other_running_jobs:
