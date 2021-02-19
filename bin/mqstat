@@ -168,8 +168,8 @@ if __name__ == '__main__':
         num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in my_jobs if m[1]['job_state']=='R'])
         num_jobs_running = len([1 for m in my_jobs if m[1]['job_state']=='R'])
 
-        print("{} jobs running: {} / {} ({:.1f}%)".format(user, num_jobs_running, num_jobs, num_jobs_running/num_jobs*100))
-        print("{} CPUs running: {} / {} ({:.1f}%)".format(user, num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
+        print("{} jobs running: {} / {} ({:.1f}%)".format(user, num_jobs_running, num_jobs, num_jobs_running/num_jobs*100 if num_jobs > 0 else 0))
+        print("{} CPUs running: {} / {} ({:.1f}%)".format(user, num_cpus_running, total_cpus, num_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
         print("{} CPUs queued: {}".format(user, num_cpus_not_running))
 
         my_comments = {}
@@ -193,7 +193,10 @@ if __name__ == '__main__':
             if server_regex.sub('',m[1]['exec_host']) in queue_nodes:
                 non_microbiome_jobs_on_our_nodes.append(m)
         num_non_microbiome_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in non_microbiome_jobs_on_our_nodes])
-        print("Non-microbiome group jobs / CPU: {} / {} ({:.1f}%)".format(len(non_microbiome_jobs_on_our_nodes), num_non_microbiome_cpus_running, num_non_microbiome_cpus_running/total_cpus*100))
+        print("Non-microbiome group jobs / CPU: {} / {} ({:.1f}%)".format(
+            len(non_microbiome_jobs_on_our_nodes),
+            num_non_microbiome_cpus_running,
+            num_non_microbiome_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
 
 
 
