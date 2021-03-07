@@ -153,7 +153,7 @@ if __name__ == '__main__':
         num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']=='R'])
 
         print("Microbiome group jobs running: {} / {} ({:.2f}%)".format(num_jobs_running, num_jobs, num_jobs_running/num_jobs*100))
-        print("Microbiome group CPUs running: {} / {} ({:.2f}%)".format(num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
+        print("Microbiome group CPUs utilized: {} / {} ({:.2f}%)".format(num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
         print("Microbiome group CPUs queued: {}".format(num_cpus_not_running))
 
         import getpass
