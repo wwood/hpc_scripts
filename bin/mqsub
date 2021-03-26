@@ -214,7 +214,7 @@ if __name__ == '__main__':
         else:
             logging.debug("Not checking for executable availability as args.command not defined")
 
-        jobname = jobname.replace("/","_")
+        jobname = jobname.replace("/","_").replace(".","",1)
         logging.debug("Naming job as: {}".format(jobname))
 
         hours = 'programming_error'
