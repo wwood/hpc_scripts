@@ -314,8 +314,16 @@ if __name__ == '__main__':
 
                 j = PbsJobInfo.json(job_id)
                 exit_status = j['Exit_status']
-                if exit_status != 0:
-                    logging.error("Script appears to have failed. Exited with exit code {}".format(exit_status))
+                if exit_status == 140 or exit_status == -11 or exit_status == 137:
+                    logging.error("WALLTIME EXPIRED: Script appears to have failed. Exited with exit code {}".format(exit_status))
+                elif exit_status == -10 or exit_status == 9 or exit_status == 265 or exit_status == 271:
+                    logging.error("OUT OF MEMORY: Script appears to have failed. Exited with exit code {}".format(exit_status))   
+                elif exit_status == 139:
+                    logging.error("SEGMENTATION FAULT: Script appears to have failed. Exited with exit code {}".format(exit_status))
+                elif exit_status == 134:
+                    logging.error("CORE DUMP: Script appears to have failed. Exited with exit code {}".format(exit_status)) 
+                elif exit_status == 127:
+                    logging.error("HARDWARE FAULT: Script appears to have failed. Exited with exit code {}".format(exit_status)) 
                 r = j['resources_used']
                 logging.info("resources_used.walltime: {}".format(r['walltime']))
                 logging.info("resources_used.cpupercent: {}".format(r['cpupercent']))
@@ -339,10 +347,20 @@ if __name__ == '__main__':
                         msg = msg+"\nscript_path: {}\n".format(args.script)
                     else:
                         msg = msg+"\ncommand: {}\n".format(' '.join(args.command))
-                    msg = msg+"\n this message was sent by mqsub.\n"
+                    msg = msg+"\nThis message was sent by mqsub.\n"
 
                     if exit_status == 0:
-                        subject = 'mqsub process {} finished running with exit status 0'.format(jobname)
+                        subject = 'mqsub process \'{}\' finished running with exit status 0'.format(jobname)
+                    elif exit_status == 140 or exit_status == -11 or exit_status == 137:
+                        subject = 'WALLTIME EXPIRED: mqsub process {} was aborted with exit status {}'.format(jobname, exit_status)
+                    elif exit_status == -10 or exit_status == 9 or exit_status == 265 or exit_status == 271:
+                        subject = 'OUT OF MEMORY: mqsub process {} was aborted with exit status {}'.format(jobname, exit_status)   
+                    elif exit_status == 139:
+                        subject = 'SEGMENTATION FAULT: mqsub process {} was aborted with exit status {}'.format(jobname, exit_status)
+                    elif exit_status == 134:
+                        subject = 'CORE DUMP: mqsub process {} was aborted with exit status {}'.format(jobname, exit_status) 
+                    elif exit_status == 127:
+                        subject = 'HARDWARE FAULT: mqsub process {} was aborted with exit status {}'.format(jobname, exit_status)                          
                     else:
                         subject = 'FAIL: mqsub process {} finished running with exit status {}'.format(jobname, exit_status)
                     with SMTP(host='localhost',port=0) as smtp:
