@@ -1,0 +1,151 @@
+#!/usr/bin/env python3.4
+
+# Must be python3.4-compatible since that is what is on the lyra base
+
+# Script to more easily submit jobs to the QUT HPC queuing system
+
+__author__ = "Peter Sternes"
+__copyright__ = "Copyright 2021"
+__credits__ = ["Peter Sternes"]
+__license__ = "GPL3"
+__maintainer__ = "Peter Sternes"
+__email__ = "peter.sternes near qut.edu.au"
+__status__ = "Development"
+
+import argparse
+from argparse import RawTextHelpFormatter
+import subprocess
+import getpass
+import time
+import sys
+from smtplib import SMTP
+
+def run(command, stdin=None):
+    '''
+    Run a subprocess.check_output() with the given command with
+    'bash -c command'
+    returning the stdout. If the command fails (i.e. has a non-zero exitstatus),
+    raise a ExternCalledProcessError that includes the $stderr as part of
+    the error message
+
+    Parameters
+    ----------
+    command: str
+        command to run
+    stdin: str or None
+        stdin to be provided to the process, to subprocess.communicate.
+
+    Returns
+    -------
+    Standard output of the run command
+
+    Exceptions
+    ----------
+    extern.ExternCalledProcessError including stdout and stderr of the run
+    command should it return with non-zero exit status.
+
+    Parameters
+    ----------
+    command : TYPE
+        DESCRIPTION.
+    stdin : TYPE, optional
+        DESCRIPTION. The default is None.
+
+    Raises
+    ------
+    ExternCalledProcessError
+        DESCRIPTION.
+
+    Returns
+    -------
+    stdout : TYPE
+        DESCRIPTION.
+
+    '''
+    #logging.debug("Running extern cmd: %s" % command)
+
+    using_stdin = stdin is not None
+    process = process = subprocess.Popen(
+        ["bash",'-o','pipefail',"-c", command],
+        stdin= (subprocess.PIPE if using_stdin else None),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate(stdin)
+
+    if process.returncode != 0:
+        raise ExternCalledProcessError(process, command, stdout.decode(), stderr.decode())
+    return stdout
+
+class ExternCalledProcessError(subprocess.CalledProcessError):
+    def __init__(self, completed_process, command, stdout, stderr):
+        self.command = command
+        self.returncode = completed_process.returncode
+        self.stderr = stderr
+        self.stdout = stdout
+        self.completed_process = completed_process
+
+    def __str__(self):
+        return "Command %s returned non-zero exit status %i.\n"\
+            "STDERR was: %sSTDOUT was: %s" % (
+                self.command,
+                self.returncode,
+                self.stderr,
+                self.stdout)
+
+#%% main command
+#parse
+parser = argparse.ArgumentParser(description='''
+  _ __ ___   __ ___      ____ _(_) |_ 
+ | '_ ` _ \ / _` \ \ /\ / / _` | | __|
+ | | | | | | (_| |\ V  V / (_| | | |_ 
+ |_| |_| |_|\__, | \_/\_/ \__,_|_|\__|
+               |_|                    
+
+Typing 'mqwait' will email you once all your currently queued jobs finish.
+
+Alternatively, you can specify a file containing a list of PBS job IDs you wish to be notified by once they finish.
+
+''',formatter_class=RawTextHelpFormatter)
+parser.add_argument('-i','--input', help='Input file containg a newline separated list of PBS job names (i.e. 123456.pbs)', required=False, dest='i', metavar='file')
+args = parser.parse_args()
+
+#check and get job lists
+current_jobs = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
+
+if args.i is None:
+    all_jobs = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
+    all_names = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $4}\'').decode().splitlines()
+    
+if args.i is not None:
+    with open(args.i) as file:
+        all_jobs = file.read().splitlines()
+        all_jobs = list(filter(str.strip, all_jobs))
+        if not any(i in all_jobs for i in current_jobs):
+            print('WARNING. Some of the jobs specified in the input file are not currently running. Exiting')
+            sys.exit()
+        else:
+            with open(args.i) as file:
+                all_jobs = file.read().splitlines()
+                all_jobs = list(filter(str.strip, all_jobs))
+                all_names=[]
+                for i in all_jobs:
+                    cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\'' 
+                    name = run(cmd).decode().splitlines()
+                    all_names += name
+            
+#run qstat every 60 seconds to compare lists
+starttime = time.time()
+while True:
+    current_jobs = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
+    if any(i in current_jobs for i in all_jobs):
+        None
+    else:
+        print('mqwait: All PBS jobs complete')
+        with SMTP(host='localhost',port=0) as smtp:
+            smtp.sendmail('CMR_HPC','{}@qut.edu.au'.format(getpass.getuser()),'Subject: mqwait has finished\n\nThe following PBS job(s) completed:\n{}\n\nCorresponding with the following job name(s):\n{}'.format('\n'.join(all_jobs),'\n'.join(all_names)))
+        break
+    time.sleep(5.0 - ((time.time() - starttime) % 5.0))
+
+
+
+
+
