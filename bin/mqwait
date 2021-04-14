@@ -143,7 +143,7 @@ while True:
         with SMTP(host='localhost',port=0) as smtp:
             smtp.sendmail('CMR_HPC','{}@qut.edu.au'.format(getpass.getuser()),'Subject: mqwait has finished\n\nThe following PBS job(s) completed:\n{}\n\nCorresponding with the following job name(s):\n{}'.format('\n'.join(all_jobs),'\n'.join(all_names)))
         break
-    time.sleep(5.0 - ((time.time() - starttime) % 5.0))
+    time.sleep(60.0 - ((time.time() - starttime) % 60.0))
 
 
 
