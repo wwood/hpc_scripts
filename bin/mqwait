@@ -19,6 +19,8 @@ import getpass
 import time
 import sys
 from smtplib import SMTP
+from time import strftime
+import json
 
 def run(command, stdin=None):
     '''
@@ -91,6 +93,7 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
                 self.stderr,
                 self.stdout)
 
+
 #%% main command
 #parse
 parser = argparse.ArgumentParser(description='''
@@ -105,7 +108,9 @@ Typing 'mqwait' will email you once all your currently queued jobs finish.
 Alternatively, you can specify a file containing a list of PBS job IDs you wish to be notified by once they finish.
 
 ''',formatter_class=RawTextHelpFormatter)
-parser.add_argument('-i','--input', help='Input file containg a newline separated list of PBS job names (i.e. 123456.pbs)', required=False, dest='i', metavar='file')
+parser.add_argument('-i', help='Input file containing a newline separated list of PBS job names (i.e. 123456.pbs)', required=False, dest='i', metavar='file')
+parser.add_argument('-p', help='Polling rate (in seconds)',  default=1.0, dest='p', metavar='secs', type=int)
+parser.add_argument('-l', help='Outputs number of remaining jobs to stdout', action='store_true', default=False, dest='l')
 args = parser.parse_args()
 
 #check and get job lists
@@ -131,20 +136,36 @@ if args.i is not None:
                     cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\'' 
                     name = run(cmd).decode().splitlines()
                     all_names += name
-            
-#run qstat every 60 seconds to compare lists
+         
+#run qstat every arg.p seconds to compare lists
 starttime = time.time()
 while True:
     current_jobs = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
+    if args.l is True:           
+        total_job_number = str(len(all_jobs))    
+        all_jobs_set = set(all_jobs)
+        remaining_jobs = all_jobs_set.intersection(current_jobs)
+        remaining_jobs_number = str(len(remaining_jobs))
+        msg = 'mqwait: ' + remaining_jobs_number + ' out of ' + total_job_number + ' jobs remaining'
+        print(strftime("%Y-%m-%d %H:%M:%S") + '\t' + msg)
+        sys.stdout.flush()  
     if any(i in current_jobs for i in all_jobs):
         None
     else:
         print('mqwait: All PBS jobs complete')
+        status_list=[]
+        for job_id in all_jobs:
+            try:
+                status=str(json.loads(run("qstat -x -f {} -F json".format(job_id)).decode())['Jobs'][job_id]['Exit_status'])
+            except KeyError:
+                status='no_exit_status'
+            status_list += status.splitlines()
+            exit_0 = str(status_list.count('0'))
+            status_total = str(len(status_list))
         with SMTP(host='localhost',port=0) as smtp:
-            smtp.sendmail('CMR_HPC','{}@qut.edu.au'.format(getpass.getuser()),'Subject: mqwait has finished\n\nThe following PBS job(s) completed:\n{}\n\nCorresponding with the following job name(s):\n{}'.format('\n'.join(all_jobs),'\n'.join(all_names)))
+            smtp.sendmail('CMR_HPC','{}@qut.edu.au'.format(getpass.getuser()),'Subject: mqwait has finished\n\nThe following PBS job(s) completed:\n{}\n\nCorresponding with the following job name(s):\n{}\n\n{} out of {} jobs finished successfully with an exit status 0'.format('\n'.join(all_jobs),'\n'.join(all_names),'\n'.join(exit_0),'\n'.join(status_total)))
         break
-    time.sleep(60.0 - ((time.time() - starttime) % 60.0))
-
+    time.sleep(args.p - ((time.time() - starttime) % args.p))
 
 
 
