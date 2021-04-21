@@ -105,22 +105,40 @@ parser = argparse.ArgumentParser(description='''
 
 Typing 'mqwait' will email you once all your currently queued jobs finish.
 
-Alternatively, you can specify a file containing a list of PBS job IDs you wish to be notified by once they finish.
+Alternatively, you can:
+    (1) specify a file containing a list of PBS job IDs you wish to be notified by once they finish.
+    (2) pipe a series of mqsub jobs into mqwait by appending '|& mqsub -m'. It parses STDERR so must be piped using \'|&\' and mqsub must also be run in the background using \'--bg\'.
+        Must be a single command encompassing multiple mqsub commands, or a series of commands executed in a single script.
+        i.e. \'parallel mqsub --no-email --bg ... |& mqwait -m\'
+             \'mqsub_jobs.sh |& mqwait -m\'
 
 ''',formatter_class=RawTextHelpFormatter)
 parser.add_argument('-i', help='Input file containing a newline separated list of PBS job names (i.e. 123456.pbs)', required=False, dest='i', metavar='file')
-parser.add_argument('-p', help='Polling rate (in seconds)',  default=1.0, dest='p', metavar='secs', type=int)
-parser.add_argument('-l', help='Outputs number of remaining jobs to stdout', action='store_true', default=False, dest='l')
+parser.add_argument('-p', help='Polling rate (in seconds)',  default=60.0, dest='p', metavar='secs', type=int)
+parser.add_argument('-l', help='Verbosely displays the number of remaining jobs. Controlled by the polling rate (-p)', action='store_true', default=False, dest='l')
+parser.add_argument('-m', help='Takes piped output from mqsub and waits on those jobs.', action='store_true', default=False, dest='m')
 args = parser.parse_args()
 
 #check and get job lists
 current_jobs = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
 
-if args.i is None:
+if args.m is True and args.i is None:
+    output = subprocess.getoutput("grep 'INFO: qsub stdout was:'").splitlines()
+    all_jobs=[i.split()[7] for i in output]
+    all_names=[]
+    for i in all_jobs:
+        cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\'' 
+        name = run(cmd).decode().splitlines()
+        all_names += name
+    print('Adding the following mqsub jobs to mqwait: ' + ' '.join(all_jobs))
+    print('Corresponding to the following job names: ' + ' '.join(all_names))
+elif args.m is True and args.i is not None:
+    print('WARNING. -m and -i cannot be specified at the same time. Exiting')
+    sys.exit()
+elif args.i is None:
     all_jobs = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
     all_names = run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $4}\'').decode().splitlines()
-    
-if args.i is not None:
+elif args.i is not None:
     with open(args.i) as file:
         all_jobs = file.read().splitlines()
         all_jobs = list(filter(str.strip, all_jobs))
@@ -136,7 +154,7 @@ if args.i is not None:
                     cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\'' 
                     name = run(cmd).decode().splitlines()
                     all_names += name
-         
+    
 #run qstat every arg.p seconds to compare lists
 starttime = time.time()
 while True:
@@ -166,7 +184,4 @@ while True:
             smtp.sendmail('CMR_HPC','{}@qut.edu.au'.format(getpass.getuser()),'Subject: mqwait has finished\n\nThe following PBS job(s) completed:\n{}\n\nCorresponding with the following job name(s):\n{}\n\n{} out of {} jobs finished successfully with an exit status 0'.format('\n'.join(all_jobs),'\n'.join(all_names),'\n'.join(exit_0),'\n'.join(status_total)))
         break
     time.sleep(args.p - ((time.time() - starttime) % args.p))
-
-
-
 
