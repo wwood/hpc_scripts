@@ -21,7 +21,8 @@ import subprocess
 import getpass
 import shutil
 import re
-from datetime import date
+from datetime import datetime, timedelta
+import datetime
 import json
 import time
 from smtplib import SMTP
@@ -81,7 +82,20 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
                 self.stderr,
                 self.stdout)
 
-
+def printTable(myDict, colList=None):
+   if not colList: colList = list(myDict[0].keys() if myDict else [])
+   myList = [colList] # 1st row = header
+   for item in myDict: myList.append([str(item[col] if item[col] is not None else '') for col in colList])
+   colSize = [max(map(len,col)) for col in zip(*myList)]
+   formatStr = ' | '.join(["{{:<{}}}".format(i) for i in colSize])
+   myList.insert(1, ['-' * i for i in colSize]) # Seperating line
+   for item in myList: print(formatStr.format(*item))
+   
+def strfdelta(tdelta, fmt):
+    d = {"days": tdelta.days}
+    d["hours"], rem = divmod(tdelta.seconds, 3600)
+    d["minutes"], d["seconds"] = divmod(rem, 60)
+    return fmt.format(**d)
 
 
 if __name__ == '__main__':
@@ -118,44 +132,61 @@ if __name__ == '__main__':
     # Add amount of current runtime, rather than when it was started
 
     if args.list:
-        print("\t".join([
-            'ID',
-            'owner',
-            'state',
-            'CPUs',
-            'RAM',
-            'walltime (hrs)',
-            'runtime',
-        ]))
+        dicts=[]
         for (jid, j) in microbiome_jobs:
             if j['job_state']=='R':
                 try:
-                    runtime = 'started at {}'.format(j['stime'])
+                    rawtime = datetime.datetime.strptime(j['stime'], '%a %b %d %H:%M:%S %Y')
+                    walltime = timedelta(hours=int(j['Resource_List']['walltime'].replace(':00:00','')))
+                    runtime = j['stime']
+                    elapsedtime = datetime.datetime.now() - rawtime
+                    perctime = int(elapsedtime / walltime * 100)
+                    elapsedtime2 = strfdelta(elapsedtime, '{days} day, {hours} hr, {minutes} min')         
                 except KeyError:
                     # Occasional KeyError, maybe when the job just started?
                     runtime = '-'
+                    elapsedtime = '-'
+                    elapsedtime2 = '-'
+                    rawtime = '-'
+                    perctime = '-'
             else:
                 runtime = '-'
-            print("\t".join([
-                jid,
-                user_replace_regex.sub('',j['Job_Owner']),
-                j['job_state'],
-                str(j['Resource_List']['ncpus']),
-                j['Resource_List']['mem'],
-                j['Resource_List']['walltime'].replace(':00:00',''),
-                runtime,
-            ]))
+                elapsedtime = '-'
+                elapsedtime2 = '-'
+                rawtime = '-'
+                perctime = '-'
+            job = {'ID':jid,
+                   'owner':user_replace_regex.sub('',j['Job_Owner']),
+                   'state':j['job_state'],
+                   'CPUs':str(j['Resource_List']['ncpus']),
+                   'RAM':j['Resource_List']['mem'],
+                   'walltime (hrs)':j['Resource_List']['walltime'].replace(':00:00',''),
+                   'start time':runtime,
+                   'timer':elapsedtime,
+                   'elapsed time':elapsedtime2,
+                   '% walltime':perctime,
+                   'microbiome queue':"yes"
+                   }
+            dicts.append(job)
         for (jid, j) in other_jobs:
             if j['queue']!='microbiome':    
-                print("\t".join([
-                jid,
-                user_replace_regex.sub('',j['Job_Owner']),
-                j['job_state'],
-                str(j['Resource_List']['ncpus']),
-                j['Resource_List']['mem'],
-                j['Resource_List']['walltime'].replace(':00:00',''),
-                runtime,
-            ]))            
+                job = {'ID':jid,
+                   'owner':user_replace_regex.sub('',j['Job_Owner']),
+                   'state':j['job_state'],
+                   'CPUs':str(j['Resource_List']['ncpus']),
+                   'RAM':j['Resource_List']['mem'],
+                   'walltime (hrs)':j['Resource_List']['walltime'].replace(':00:00',''),
+                   'start time':runtime,
+                   'timer':elapsedtime,
+                   'elapsed time':elapsedtime2,
+                   '% walltime':perctime,
+                   'microbiome queue':"no"
+                   }
+            dicts.append(job)
+        
+        dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['owner'], d['elapsed time']), reverse = True)
+        printTable(dicts_sorted, colList=('owner', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue'))
+   
     else:
         num_jobs = len(microbiome_jobs)
         num_cpus_not_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']!='R'])
