@@ -155,8 +155,9 @@ if __name__ == '__main__':
                 elapsedtime2 = '-'
                 rawtime = '-'
                 perctime = '-'
-            job = {'ID':jid,
-                   'owner':user_replace_regex.sub('',j['Job_Owner']),
+            job = {'PBS ID':jid,
+                   #'job name': j[''],
+                   'username':user_replace_regex.sub('',j['Job_Owner']),
                    'state':j['job_state'],
                    'CPUs':str(j['Resource_List']['ncpus']),
                    'RAM':j['Resource_List']['mem'],
@@ -165,13 +166,14 @@ if __name__ == '__main__':
                    'timer':elapsedtime,
                    'elapsed time':elapsedtime2,
                    '% walltime':perctime,
-                   'microbiome queue':"yes"
+                   'microbiome queue':"yes",
+                   'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
                    }
             dicts.append(job)
         for (jid, j) in other_jobs:
             if j['queue']!='microbiome':    
-                job = {'ID':jid,
-                   'owner':user_replace_regex.sub('',j['Job_Owner']),
+                job = {'PBS ID':jid,
+                   'username':user_replace_regex.sub('',j['Job_Owner']),
                    'state':j['job_state'],
                    'CPUs':str(j['Resource_List']['ncpus']),
                    'RAM':j['Resource_List']['mem'],
@@ -180,12 +182,13 @@ if __name__ == '__main__':
                    'timer':elapsedtime,
                    'elapsed time':elapsedtime2,
                    '% walltime':perctime,
-                   'microbiome queue':"no"
+                   'microbiome queue':"no",
+                   'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
                    }
             dicts.append(job)
-        
-        dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['owner'], d['elapsed time']), reverse = True)
-        printTable(dicts_sorted, colList=('owner', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue'))
+        dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates
+        dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['username'], d['elapsed time']), reverse = True)
+        printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue'))
    
     else:
         num_jobs = len(microbiome_jobs)
