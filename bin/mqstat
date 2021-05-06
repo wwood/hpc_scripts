@@ -141,7 +141,8 @@ if __name__ == '__main__':
                     runtime = j['stime']
                     elapsedtime = datetime.datetime.now() - rawtime
                     perctime = int(elapsedtime / walltime * 100)
-                    elapsedtime2 = strfdelta(elapsedtime, '{days} day, {hours} hr, {minutes} min')         
+                    elapsedtime2 = strfdelta(elapsedtime, '{days} day, {hours} hr, {minutes} min')
+                    node=j['exec_host']
                 except KeyError:
                     # Occasional KeyError, maybe when the job just started?
                     runtime = '-'
@@ -149,12 +150,14 @@ if __name__ == '__main__':
                     elapsedtime2 = '-'
                     rawtime = '-'
                     perctime = '-'
+                    nodes = '-'
             else:
                 runtime = '-'
                 elapsedtime = '-'
                 elapsedtime2 = '-'
                 rawtime = '-'
                 perctime = '-'
+                node = '-'
             job = {'PBS ID':jid,
                    #'job name': j[''],
                    'username':user_replace_regex.sub('',j['Job_Owner']),
@@ -167,6 +170,7 @@ if __name__ == '__main__':
                    'elapsed time':elapsedtime2,
                    '% walltime':perctime,
                    'microbiome queue':"yes",
+                   'node':node,
                    'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
                    }
             dicts.append(job)
@@ -183,12 +187,13 @@ if __name__ == '__main__':
                    'elapsed time':elapsedtime2,
                    '% walltime':perctime,
                    'microbiome queue':"no",
+                   'node':node,
                    'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
                    }
             dicts.append(job)
         dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates
         dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['username'], d['elapsed time']), reverse = True)
-        printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue'))
+        printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue','node'))
    
     else:
         num_jobs = len(microbiome_jobs)
@@ -245,7 +250,3 @@ if __name__ == '__main__':
             num_non_microbiome_cpus_running,
             num_non_microbiome_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
 
-
-
-
-    
