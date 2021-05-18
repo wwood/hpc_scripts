@@ -241,19 +241,27 @@ if __name__ == '__main__':
                 cl5n013_cpu += line['CPUs']
                 cl5n013_ram += line['RAM']
        
-        node_table=[]
-        node_summary = {'cl5n010 CPU': str(128-cl5n010_cpu) + str(' threads'),
-               'cl5n010 RAM':str(1000-cl5n010_ram) + str(' GB'),
-               'cl5n011 CPU':str(128-cl5n011_cpu) + str(' threads'),
-               'cl5n011 RAM':str(1000-cl5n011_ram) + str(' GB'),
-               'cl5n012 CPU':str(128-cl5n012_cpu) + str(' threads'),
-               'cl5n012 RAM':str(1000-cl5n012_ram) + str(' GB'),
-               'cl5n013 CPU':str(128-cl5n013_cpu) + str(' threads'),
-               'cl5n013 RAM':str(1000-cl5n013_ram) + str(' GB')}
+        node_table=[]      
+        node_summary = {'node':str('cl5n010'),
+                'CPU': str(128-cl5n010_cpu) + str(' threads'),
+               'RAM':str(1000-cl5n010_ram) + str(' GB')}
         node_table.append(node_summary)
+        node_summary = {'node':str('cl5n011'),
+                'CPU': str(128-cl5n011_cpu) + str(' threads'),
+               'RAM':str(1000-cl5n011_ram) + str(' GB')}
+        node_table.append(node_summary)
+        node_summary = {'node':str('cl5n012'),
+                'CPU': str(128-cl5n012_cpu) + str(' threads'),
+               'RAM':str(1000-cl5n012_ram) + str(' GB')}
+        node_table.append(node_summary)
+        node_summary = {'node':str('cl5n013'),
+                'CPU': str(128-cl5n013_cpu) + str(' threads'),
+               'RAM':str(1000-cl5n013_ram) + str(' GB')}
+        node_table.append(node_summary)
+        
         print('Available resources:')
-        print('-------------------')
-        printTable(node_table, colList=('cl5n010 CPU','cl5n010 RAM','cl5n011 CPU','cl5n011 RAM','cl5n012 CPU','cl5n012 RAM','cl5n013 CPU','cl5n013 RAM'))   
+        print('--------------------')
+        printTable(node_table)   
     
     else:
         num_jobs = len(microbiome_jobs)
