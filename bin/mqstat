@@ -261,7 +261,7 @@ if __name__ == '__main__':
         
         print('Available resources:')
         print('--------------------')
-        printTable(node_table, colList=('node','CPU', 'RAM',)   
+        printTable(node_table, colList=('node','CPU', 'RAM'))
     
     else:
         num_jobs = len(microbiome_jobs)
