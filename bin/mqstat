@@ -104,7 +104,7 @@ if __name__ == '__main__':
     #parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
     parser.add_argument('--quiet', help='only output errors', action="store_true")
     parser.add_argument('--list', help='output all jobs on the microbiome queue [default: Provide overview]', action="store_true")
-    parser.add_argument('--node', help='output the amount of spare resources per node [default: Provide overview]', action="store_true")
+    parser.add_argument('--avail', help='output the amount of spare resources per node [default: Provide overview]', action="store_true")
     args = parser.parse_args()
 
     # Setup logging
@@ -196,7 +196,7 @@ if __name__ == '__main__':
         print('----------------------')
         printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue','node'))
    
-    elif args.node:
+    elif args.avail:
         dicts=[]
         for (jid, j) in microbiome_jobs:
             if j['job_state']=='R':
