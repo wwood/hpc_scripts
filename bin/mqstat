@@ -103,9 +103,8 @@ if __name__ == '__main__':
     parser.add_argument('--debug', help='output debug information', action="store_true")
     #parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
     parser.add_argument('--quiet', help='only output errors', action="store_true")
-
     parser.add_argument('--list', help='output all jobs on the microbiome queue [default: Provide overview]', action="store_true")
-
+    parser.add_argument('--node', help='output the amount of spare resources per node [default: Provide overview]', action="store_true")
     args = parser.parse_args()
 
     # Setup logging
@@ -150,7 +149,7 @@ if __name__ == '__main__':
                     elapsedtime2 = '-'
                     rawtime = '-'
                     perctime = '-'
-                    nodes = '-'
+                    node = '-'
             else:
                 runtime = '-'
                 elapsedtime = '-'
@@ -193,8 +192,69 @@ if __name__ == '__main__':
             dicts.append(job)
         dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates
         dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['username'], d['elapsed time']), reverse = True)
+        print('List of jobs in queue:')
+        print('----------------------')
         printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue','node'))
    
+    elif args.node:
+        dicts=[]
+        for (jid, j) in microbiome_jobs:
+            if j['job_state']=='R':
+                job = {'PBS ID':jid,
+                   'CPUs':int(j['Resource_List']['ncpus']),
+                   'RAM':int(j['Resource_List']['mem'].replace('gb','')),
+                   'node':j['exec_host'].split('/')[0]
+                   }
+            dicts.append(job)
+        for (jid, j) in other_jobs:
+            if j['queue']!='microbiome':    
+                job = {'PBS ID':jid,
+                   'CPUs':int(j['Resource_List']['ncpus']),
+                   'RAM':int(j['Resource_List']['mem'].replace('gb','')),
+                   'node':j['exec_host'].split('/')[0]
+                   }
+            dicts.append(job)
+        dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates   
+        
+        cl5n010_ram=0
+        cl5n010_cpu=0
+        for line in dicts:
+            if 'cl5n010' in line['node']:
+                cl5n010_cpu += line['CPUs']
+                cl5n010_ram += line['RAM']
+        cl5n011_ram=0
+        cl5n011_cpu=0
+        for line in dicts:
+            if 'cl5n011' in line['node']:
+                cl5n011_cpu += line['CPUs']
+                cl5n011_ram += line['RAM']
+        cl5n012_ram=0
+        cl5n012_cpu=0
+        for line in dicts:
+            if 'cl5n012' in line['node']:
+                cl5n012_cpu += line['CPUs']
+                cl5n012_ram += line['RAM']
+        cl5n013_ram=0
+        cl5n013_cpu=0
+        for line in dicts:
+            if 'cl5n013' in line['node']:
+                cl5n013_cpu += line['CPUs']
+                cl5n013_ram += line['RAM']
+       
+        node_table=[]
+        node_summary = {'cl5n010 CPU': str(128-cl5n010_cpu) + str(' threads'),
+               'cl5n010 RAM':str(1000-cl5n010_ram) + str(' GB'),
+               'cl5n011 CPU':str(128-cl5n011_cpu) + str(' threads'),
+               'cl5n011 RAM':str(1000-cl5n011_ram) + str(' GB'),
+               'cl5n012 CPU':str(128-cl5n012_cpu) + str(' threads'),
+               'cl5n012 RAM':str(1000-cl5n012_ram) + str(' GB'),
+               'cl5n013 CPU':str(128-cl5n013_cpu) + str(' threads'),
+               'cl5n013 RAM':str(1000-cl5n013_ram) + str(' GB')}
+        node_table.append(node_summary)
+        print('Available resources:')
+        print('-------------------')
+        printTable(node_table, colList=('cl5n010 CPU','cl5n010 RAM','cl5n011 CPU','cl5n011 RAM','cl5n012 CPU','cl5n012 RAM','cl5n013 CPU','cl5n013 RAM'))   
+    
     else:
         num_jobs = len(microbiome_jobs)
         num_cpus_not_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']!='R'])
