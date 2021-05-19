@@ -205,7 +205,7 @@ if __name__ == '__main__':
                    'RAM':int(j['Resource_List']['mem'].replace('gb','')),
                    'node':j['exec_host'].split('/')[0]
                    }
-            dicts.append(job)
+                dicts.append(job)
         for (jid, j) in other_jobs:
             if j['queue']!='microbiome':    
                 job = {'PBS ID':jid,
@@ -213,7 +213,7 @@ if __name__ == '__main__':
                    'RAM':int(j['Resource_List']['mem'].replace('gb','')),
                    'node':j['exec_host'].split('/')[0]
                    }
-            dicts.append(job)
+                dicts.append(job)
         dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates   
         
         cl5n010_ram=0
