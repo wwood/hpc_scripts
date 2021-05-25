@@ -1,0 +1,110 @@
+#!/usr/bin/env python3.4
+
+# Must be python3.4-compatible since that is what is on the lyra base
+
+# Script to more easily submit jobs to the QUT HPC queuing system
+
+__author__ = "Peter Sternes"
+__copyright__ = "Copyright 2021"
+__credits__ = ["Peter Sternes"]
+__license__ = "GPL3"
+__maintainer__ = "Peter Sternes"
+__email__ = "peter.sternes near qut.edu.au"
+__status__ = "Development"
+
+import argparse
+import logging
+import subprocess
+from argparse import RawTextHelpFormatter
+
+## TODO: Code below copied from the mqsub script. Code shouldn't really be copied but imported.
+
+def run(command, stdin=None):
+    '''
+    Run a subprocess.check_output() with the given command with
+    'bash -c command'
+    returning the stdout. If the command fails (i.e. has a non-zero exitstatus),
+    raise a ExternCalledProcessError that includes the $stderr as part of
+    the error message
+
+    Parameters
+    ----------
+    command: str
+        command to run
+    stdin: str or None
+        stdin to be provided to the process, to subprocess.communicate.
+
+    Returns
+    -------
+    Standard output of the run command
+
+    Exceptions
+    ----------
+    extern.ExternCalledProcessError including stdout and stderr of the run
+    command should it return with non-zero exit status.
+    '''
+    #logging.debug("Running extern cmd: %s" % command)
+
+    using_stdin = stdin is not None
+    process = process = subprocess.Popen(
+        ["bash",'-o','pipefail',"-c", command],
+        stdin= (subprocess.PIPE if using_stdin else None),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate(stdin)
+
+    if process.returncode != 0:
+        raise ExternCalledProcessError(process, command, stdout.decode(), stderr.decode())
+    return stdout
+
+class ExternCalledProcessError(subprocess.CalledProcessError):
+    def __init__(self, completed_process, command, stdout, stderr):
+        self.command = command
+        self.returncode = completed_process.returncode
+        self.stderr = stderr
+        self.stdout = stdout
+        self.completed_process = completed_process
+
+    def __str__(self):
+        return "Command %s returned non-zero exit status %i.\n"\
+            "STDERR was: %sSTDOUT was: %s" % (
+                self.command,
+                self.returncode,
+                self.stderr,
+                self.stdout)
+            
+#%%parse
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='''                                                                                                        
+    Create an environment using the latest version of a package.
+    ''',formatter_class=RawTextHelpFormatter)
+    parser.add_argument('package',help='package to be installed')
+    parser.add_argument('-c', help='Use conda instead of the default mamba to install', action='store_true', default=False, dest='c')
+    parser.add_argument('-v', help='Display latest version of package without installing', action='store_true', default=False, dest='v')
+    args = parser.parse_args()
+    
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+    
+    if args.c is True:
+        installer = 'conda'
+    else:
+        installer = 'mamba'
+    
+    package = args.package
+    
+    print('Installer: ' + installer)
+    print('Package: ' + package)
+    print('Checking for latest version...')
+    
+    version = str(run(("{} search {} | awk '{{print $2}}' | tail -n1").format(installer, package)).decode()).rstrip()
+    
+    print('Latest version: ' + version)
+    
+    environment_name = package + '-v' + version
+    
+    print('Creating a new environment entitled ' + environment_name + ' using ' + installer + '...')
+    
+    run(("{} create -y -n {} {}={}").format(installer, environment_name, package, version))
+    
+    
+    
+    
