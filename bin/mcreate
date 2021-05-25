@@ -72,7 +72,7 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
                 self.stderr,
                 self.stdout)
             
-#%%parse
+#%% parse
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='''                                                                                                        
     Create an environment using the latest version of a package.
@@ -84,6 +84,7 @@ if __name__ == '__main__':
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
     
+#%% main command
     if args.c is True:
         installer = 'conda'
     else:
@@ -91,20 +92,22 @@ if __name__ == '__main__':
     
     package = args.package
     
-    print('Installer: ' + installer)
-    print('Package: ' + package)
-    print('Checking for latest version...')
+    if args.v is True:
+        print('Package: ' + package)
+        print('Checking for latest version without installing...')
+        version = str(run(("{} search {} | awk '{{print $2}}' | tail -n1").format(installer, package)).decode()).rstrip()
+        print('Latest version: ' + version)
     
-    version = str(run(("{} search {} | awk '{{print $2}}' | tail -n1").format(installer, package)).decode()).rstrip()
-    
-    print('Latest version: ' + version)
-    
-    environment_name = package + '-v' + version
-    
-    print('Creating a new environment entitled ' + environment_name + ' using ' + installer + '...')
-    
-    run(("{} create -y -n {} {}={}").format(installer, environment_name, package, version))
-    
+    else:
+        print('Installer: ' + installer)
+        print('Package: ' + package)
+        print('Checking for latest version...')
+        version = str(run(("{} search {} | awk '{{print $2}}' | tail -n1").format(installer, package)).decode()).rstrip()
+        print('Latest version: ' + version)
+        environment_name = package + '-v' + version
+        print('Creating a new environment entitled ' + environment_name + ' using ' + installer + '...')
+        run(("{} create -y -n {} {}={}").format(installer, environment_name, package, version))
+        
     
     
     
