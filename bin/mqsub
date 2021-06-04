@@ -156,6 +156,13 @@ if __name__ == '__main__':
     SCRIPT = 'script'
     COMMAND = 'command'
 
+    time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip().split(':')[0]
+    time_required = args.hours
+    if int(time_required) > int(time_left):
+        print('\n###################################################################')
+        print('WARNING: The requested walltime coincides with server maintenance.')
+        print('###################################################################\n')
+        
     if args.script:
         content_type = SCRIPT
         if len(args.command) != 0:
@@ -291,6 +298,7 @@ if __name__ == '__main__':
                 last_jobinfo = PbsJobInfo.json(job_id)
                 last_status = last_jobinfo['job_state']
                 logging.info('First status of job is {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+                logging.error(qsub_stdout.rstrip())
                 report_running_host(last_jobinfo)
                 while True:
                     if last_status == 'F':
