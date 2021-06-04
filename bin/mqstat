@@ -122,6 +122,8 @@ if __name__ == '__main__':
     queue_nodes = ['cl5n010','cl5n011','cl5n012','cl5n013']
     other_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['job_state'] =='R' and j['exec_host'].split('/')[0] in queue_nodes])
     
+    time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip()
+    
     user_replace_regex = re.compile('@.*')
     server_regex = re.compile('/.*')
 
@@ -192,9 +194,11 @@ if __name__ == '__main__':
             dicts.append(job)
         dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates
         dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['username'], d['elapsed time']), reverse = True)
-        print('List of jobs in queue:')
+        print('\nList of jobs in queue:')
         print('----------------------')
         printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue','node'))
+#        print('----------------------------------------------------')
+        print('\nTime left until maintenance (hr:min:sec): ' + time_left + '\n')
    
     elif args.avail:
         dicts=[]
@@ -244,19 +248,19 @@ if __name__ == '__main__':
         node_table=[]      
         node_summary = {'node':str('cl5n010'),
                 'CPU': str(128-cl5n010_cpu) + str(' threads'),
-               'RAM':str(1000-cl5n010_ram) + str(' GB')}
+                'RAM':str(1000-cl5n010_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n011'),
                 'CPU': str(128-cl5n011_cpu) + str(' threads'),
-               'RAM':str(1000-cl5n011_ram) + str(' GB')}
+                'RAM':str(1000-cl5n011_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n012'),
                 'CPU': str(128-cl5n012_cpu) + str(' threads'),
-               'RAM':str(1000-cl5n012_ram) + str(' GB')}
+                'RAM':str(1000-cl5n012_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n013'),
                 'CPU': str(128-cl5n013_cpu) + str(' threads'),
-               'RAM':str(1000-cl5n013_ram) + str(' GB')}
+                'RAM':str(1000-cl5n013_ram) + str(' GB')}
         node_table.append(node_summary)
         
         print('Available resources:')
