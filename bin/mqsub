@@ -131,6 +131,7 @@ if __name__ == '__main__':
     parser.add_argument('-q','--queue', default="-", help="Name of queue to send to, or '-' to not specify [default: '-']")
     walltime_group = parser.add_mutually_exclusive_group()
     walltime_group.add_argument('--hours',default=24*7,type=int, help="Hours to run for [default: 1 week]")
+    walltime_group.add_argument('--days',type=int,help="Days to run for [default: 1 week]")
     walltime_group.add_argument('--weeks',type=int,help="Weeks to run for [default 1]")
     parser.add_argument('--name', help="Name of the job [default: first word of command]")
     parser.add_argument('--dry-run',action='store_true', help="Print script to STDOUT and do not lodge it with qsub")
@@ -157,7 +158,12 @@ if __name__ == '__main__':
     COMMAND = 'command'
 
     time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip().split(':')[0]
-    time_required = args.hours
+    if args.hours is not None:
+        time_required = int(args.hours)
+    if args.days is not None:
+        time_required = int(args.days) * 24
+    if args.weeks is not None:
+        time_required = int(args.weeks) * 168
     if int(time_required) > int(time_left):
         print('\n###################################################################')
         print('WARNING: The requested walltime coincides with server maintenance.')
@@ -227,6 +233,8 @@ if __name__ == '__main__':
         hours = 'programming_error'
         if args.weeks is not None:
             hours = 168*args.weeks
+        elif args.days is not None:
+            hours = 24*args.days
         else:
             hours = args.hours
 
