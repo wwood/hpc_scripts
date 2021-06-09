@@ -96,12 +96,12 @@ Furthermore, you can also view the amount of available resources per-node basis 
 ```
 Available resources:
 --------------------
-node    | CPU         | RAM    
-------- | ----------- | -------
-cl5n010 | 128 threads | 1000 GB
-cl5n011 | 128 threads | 1000 GB
-cl5n012 | 80 threads  | 520 GB 
-cl5n013 | 80 threads  | 520 GB 
+node    | CPU        | RAM   
+------- | ---------- | ------
+cl5n010 | 0 threads  | 560 GB
+cl5n011 | 16 threads | 550 GB
+cl5n012 | 48 threads | 480 GB
+cl5n013 | 1 threads  | 356 GB
 ```
 
 
