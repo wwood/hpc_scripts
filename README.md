@@ -121,7 +121,7 @@ In this example pbs_job_list would contain:
 3) You can also pipe multiple mqsubs (using parallel or a script containing mqsub commands) in a single command to be notified when that specific batch of jobs finish. Note: currently the STDERR from mqsub is piped into mqwait using |&. This may change in future.
 `parallel mqsub --no-email --bg ... |& mqwait -m` or `mqsub_jobs.sh |& mqwait -m`
 
-Specifying the `-l` parameter will verbosely display the number of remaining jobs on your terminal and it controlled by the polling rate `-p` (default 60 secconds)
+Specifying the `-l` parameter will verbosely display the number of remaining jobs on your terminal and it controlled by the polling rate `-p` (default 60 seconds)
 
 # mcreate
 This is a basic script which searches for the latest version of conda package and creates a new, versioned, environment using conda (with the `-c` parameter) or mamba (default; requires mamba to be installed first).
