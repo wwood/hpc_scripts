@@ -116,9 +116,11 @@ if __name__ == '__main__':
         loglevel = logging.INFO
     logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
-    overall_json = json.loads(run('qstat -f -F json').decode())['Jobs']
+    try:    
+        overall_json = json.loads(run('qstat -f -F json').decode())['Jobs']
+    except:
+        print('Malformed qstat JSON detected. Unable to parse output')
     microbiome_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']=='microbiome'])
-
     queue_nodes = ['cl5n010','cl5n011','cl5n012','cl5n013']
     other_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['job_state'] =='R' and j['exec_host'].split('/')[0] in queue_nodes])
     
@@ -129,8 +131,6 @@ if __name__ == '__main__':
 
     ## TODO:
     # Use full name not short job status
-    # Report names not IDs for users
-    # Add amount of current runtime, rather than when it was started
 
     if args.list:
         dicts=[]
@@ -197,7 +197,6 @@ if __name__ == '__main__':
         print('\nList of jobs in queue:')
         print('----------------------')
         printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue','node'))
-#        print('----------------------------------------------------')
         print('\nTime left until maintenance (hr:min:sec): ' + time_left + '\n')
    
     elif args.avail:
