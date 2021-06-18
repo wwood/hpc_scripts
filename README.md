@@ -42,8 +42,8 @@ optional arguments:
                         Arbitrary PBS directory to add e.g. '-l ngpus=1' to
                         ask for a GPU [default: Not used]
   -q QUEUE, --queue QUEUE
-                        Name of queue to send to, or '-' to not specify
-                        [default: '-']
+                        Name of queue to send to
+                        [default: 'microbiome']
   --hours HOURS         Hours to run for [default: 1 week]
   --weeks WEEKS         Weeks to run for [default 1]
   --name NAME           Name of the job [default: first word of command]
