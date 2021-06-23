@@ -248,10 +248,8 @@ if __name__ == '__main__':
         print('#PBS -M {}'.format(email),file=tf)
         if args.directive:
             print('#PBS {}'.format(args.directive),file=tf)
-        if args.queue != 'microbiome':
-            print('#PBS -q {}'.format(args.queue),file=tf)
-        else:
-            print('#PBS -q microbiome')
+        print('#PBS -q {}'.format(args.queue),file=tf)
+
         # cd to current directory
         print("cd '{}'".format(os.getcwd()), file=tf)
 
