@@ -179,9 +179,6 @@ if __name__ == '__main__':
         raise Exception("Must specify either --script-stdin or a command")
 
     with tempfile.NamedTemporaryFile(prefix='mqsub_script',suffix='.sh',mode='w') as tf:
-        if args.dry_run:
-            tf = sys.stdout
-
         if args.mem is None:
             mem = 4*args.cpus
         else:
@@ -223,7 +220,7 @@ if __name__ == '__main__':
                 logging.debug("Testing if executable {} is available in $PATH".format(exe))
                 if shutil.which(exe) is None:
                     raise Exception("The executable {} is not available, not continuing".format(exe))
-                logging.debug("Executable {} was available, seems all good", exe)
+                logging.debug("Executable {} was available, seems all good".format(exe))
         else:
             logging.debug("Not checking for executable availability as args.command not defined")
 
@@ -290,9 +287,14 @@ if __name__ == '__main__':
                 logging.info("Job is running on exec_host {}".format(jobinfo['exec_host']))
 
         if args.dry_run:
+            with open(tf) as script_written:
+                logging.info("Script writen was:\n{}".format(script_written.read()))
             logging.info("Not running qsub since this is a dry run")
             sys.exit(0)
         else:
+            with open(tf.name) as script_written:
+                logging.debug("Script writen was:\n{}".format(script_written.read()))
+
             qsub_stdout = run("qsub {}".format(tf.name)).decode()
             logging.info("qsub stdout was: {}".format(qsub_stdout.rstrip()))
             if not args.bg:
