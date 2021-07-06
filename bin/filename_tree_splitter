@@ -33,6 +33,7 @@ import sys
 import os
 
 sys.path = [os.path.join(os.path.dirname(os.path.realpath(__file__)),'..')] + sys.path
+from hpc_scripts.filename_tree_splitter import FilenameTreeSplitter
 
 if __name__ == '__main__':
     parent_parser = argparse.ArgumentParser(add_help=False)
@@ -54,20 +55,13 @@ if __name__ == '__main__':
     logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
     output_filenames = set()
+    splitter = FilenameTreeSplitter()
 
-    # for line in sys.stdin:
-    for line in open('/tmp/testing_in'):
+    for line in sys.stdin:
+    # for line in open('/tmp/testing_in'):
         base = os.path.basename(line.strip())
+        chunks = splitter.chunks(base)
 
-        chunks = []
-        index = 0
-        for length in args.split_lengths:
-            if index + length > len(base):
-                break
-            chunks.append(base[index:(index+length)])
-            index = index + length
-        if index < len(base):
-            chunks.append(base[index:])
         if '/'.join(chunks) in output_filenames:
             raise Exception("Found a clash: {}".format('/'.join(chunks)))
-        print("\t".join([line.strip(), '/'.join(chunks)]))
+        print("\t".join([line.strip(), '/'.join(chunks)+'/'+base]))
