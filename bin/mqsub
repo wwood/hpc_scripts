@@ -287,13 +287,13 @@ if __name__ == '__main__':
                 logging.info("Job is running on exec_host {}".format(jobinfo['exec_host']))
 
         if args.dry_run:
-            with open(tf) as script_written:
-                logging.info("Script writen was:\n{}".format(script_written.read()))
+            with open(tf.name) as script_written:
+                logging.info("Script written was:\n{}".format(script_written.read()))
             logging.info("Not running qsub since this is a dry run")
             sys.exit(0)
         else:
             with open(tf.name) as script_written:
-                logging.debug("Script writen was:\n{}".format(script_written.read()))
+                logging.debug("Script written was:\n{}".format(script_written.read()))
 
             qsub_stdout = run("qsub {}".format(tf.name)).decode()
             logging.info("qsub stdout was: {}".format(qsub_stdout.rstrip()))
