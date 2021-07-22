@@ -136,6 +136,8 @@ if __name__ == '__main__':
     if len(current_jobs) == 0:
         print('No jobs of yours appear to be running')
         sys.exit(0)
+    else:
+        print("Initially found {} jobs".format(len(current_jobs)))
     
     if args.m is True and args.i is None:
         output = subprocess.getoutput("grep 'INFO: qsub stdout was:'").splitlines()
