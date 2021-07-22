@@ -60,7 +60,7 @@ if __name__ == '__main__':
     for line in sys.stdin:
     # for line in open('/tmp/testing_in'):
         base = os.path.basename(line.strip())
-        chunks = splitter.chunks(base)
+        chunks = splitter.chunks(args.split_lengths, base)
 
         if '/'.join(chunks) in output_filenames:
             raise Exception("Found a clash: {}".format('/'.join(chunks)))
