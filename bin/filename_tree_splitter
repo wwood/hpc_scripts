@@ -42,6 +42,7 @@ if __name__ == '__main__':
     parent_parser.add_argument('--quiet', help='only output errors', action="store_true")
 
     parent_parser.add_argument('-n','--split-lengths',nargs='+',type=int, help='Split input names into these chunk of this length.', required=True)
+    parent_parser.add_argument('--names', nargs='+', help='Split these file names [default: Use names on STDIN].')
 
     args = parent_parser.parse_args()
 
@@ -57,8 +58,12 @@ if __name__ == '__main__':
     output_filenames = set()
     splitter = FilenameTreeSplitter()
 
-    for line in sys.stdin:
-    # for line in open('/tmp/testing_in'):
+    if args.names:
+        to_iterate = args.names
+    else:
+        to_iterate = sys.stdin
+
+    for line in to_iterate:
         base = os.path.basename(line.strip())
         chunks = splitter.chunks(args.split_lengths, base)
 
