@@ -15,3 +15,8 @@ fi
 
 # Otherwise qaddtime is only available on lyra
 alias qaddtime=/pkg/hpc/scripts/qaddtime
+
+# Save all the history, see https://debian-administration.org/article/543/Bash_eternal_history
+export HISTTIMEFORMAT="%F %T "
+PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND ; }"'echo $$ $USER \
+               "$(history 1)" >> ~/.bash_eternal_history'
