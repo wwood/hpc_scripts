@@ -247,19 +247,19 @@ if __name__ == '__main__':
         node_table=[]      
         node_summary = {'node':str('cl5n010'),
                 'CPU': str(128-cl5n010_cpu) + str(' threads'),
-                'RAM':str(1000-cl5n010_ram) + str(' GB')}
+                'RAM':str(1006-cl5n010_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n011'),
                 'CPU': str(128-cl5n011_cpu) + str(' threads'),
-                'RAM':str(1000-cl5n011_ram) + str(' GB')}
+                'RAM':str(1006-cl5n011_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n012'),
                 'CPU': str(128-cl5n012_cpu) + str(' threads'),
-                'RAM':str(1000-cl5n012_ram) + str(' GB')}
+                'RAM':str(1006-cl5n012_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n013'),
                 'CPU': str(128-cl5n013_cpu) + str(' threads'),
-                'RAM':str(1000-cl5n013_ram) + str(' GB')}
+                'RAM':str(1006-cl5n013_ram) + str(' GB')}
         node_table.append(node_summary)
         
         print('Available resources:')
