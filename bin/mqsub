@@ -283,8 +283,8 @@ if __name__ == '__main__':
     parser.add_argument('--poll-interval', help="Poll the PBS server once every this many seconds [default: 30]", type=int, default=30)
     parser.add_argument('--no-executable-check', help="Usually mqsub checks the executable is currently available. Don't do this [default: do check]",action='store_true')
     parser.add_argument('--command-file',dest='command_file', help="A file with list of newline separated commands to be split into chunks and submitted. One command per line. mqsub --file <file.txt> --chunk-num <int>")
-    parser.add_argument('--chunk-num',type=int,dest='chunk_num', help='Number of chunks to divide the commands (from --file) into')
-    parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --file) per a chunk ')
+    parser.add_argument('--chunk-num',type=int,dest='chunk_num', help='Number of chunks to divide the commands (from --command-file) into')
+    parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --command-file) per a chunk ')
     parser.add_argument('command',nargs='*',help='command to be run')
     args = parser.parse_args()
 
