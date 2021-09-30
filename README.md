@@ -85,7 +85,7 @@ or
 ```
 mqsub --command-file <file> --chunk-size <int>
 ```
-As per regular mqsub you should specify the amount of resource for, i.e:
+As per regular mqsub you should specify the amount of resource for the qsub scripts, i.e:
 ```
 mqsub -t 16 -m 32 --hours 24 --command-file <file> --chunk-num <int>
 ```
