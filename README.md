@@ -42,9 +42,9 @@ optional arguments:
                         Arbitrary PBS directory to add e.g. '-l ngpus=1' to
                         ask for a GPU [default: Not used]
   -q QUEUE, --queue QUEUE
-                        Name of queue to send to
-                        [default: 'microbiome']
+                        Name of queue to send to [default: 'microbiome']
   --hours HOURS         Hours to run for [default: 1 week]
+  --days DAYS           Days to run for [default: 1 week]
   --weeks WEEKS         Weeks to run for [default 1]
   --name NAME           Name of the job [default: first word of command]
   --dry-run             Print script to STDOUT and do not lodge it with qsub
@@ -65,6 +65,29 @@ optional arguments:
   --no-executable-check
                         Usually mqsub checks the executable is currently
                         available. Don't do this [default: do check]
+  --command-file COMMAND_FILE
+                        A file with list of newline separated commands to be
+                        split into chunks and submitted. One command per line.
+                        mqsub --file <file.txt> --chunk-num <int>
+  --chunk-num CHUNK_NUM
+                        Number of chunks to divide the commands (from --command-file)
+                        into
+  --chunk-size CHUNK_SIZE
+                        Number of commands (from --command-file) per a chunk
+
+```
+
+If you have a large amount of commands (one command per line in a single file) you wish to split in a number of qsub jobs, you can do the following:
+```
+mqsub --command-file <file> --chunk-num <int>
+```
+or
+```
+mqsub --command-file <file> --chunk-size <int>
+```
+As per regular mqsub you should specify the amount of resource for, i.e:
+```
+mqsub -t 16 -m 32 --hours 24 --command-file <file> --chunk-num <int>
 ```
 
 
