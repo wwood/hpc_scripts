@@ -130,16 +130,16 @@ class script_format:
         print('#PBS -l ncpus={}'.format(args.cpus),file=outfile)
         print('#PBS -l mem={}gb'.format(mem),file=outfile)
         print('#PBS -l walltime={}:00:00'.format(args.hours),file=outfile)
-        if args.bg and not args.no_email:
-            print('#PBS -m ae',file=outfile)
+        if args.bg and not args.no_email and not args.command_file and not (args.chunk_num or args.chunk_size):
+            print('#PBS -m ae',file=outfile) # disbled emailing when running chunks. Too spammy
         print('#PBS -M {}'.format(email),file=outfile)
         if args.directive:
             print('#PBS {}'.format(args.directive),file=outfile)
         print('#PBS -q {}'.format(args.queue),file=outfile)
-        if args.file and (args.chunk_num or args.chunk_size):
+        if args.command_file and (args.chunk_num or args.chunk_size):
             print('#PBS -N ' + command_name + str(chunkID) + '\n', file = outfile)
         else:
-            print('#PBS -N {}'.format(jobname),file=tf)
+            print('#PBS -N {}'.format(jobname),file=outfile)
         print("cd '{}'".format(os.getcwd()), file=outfile) # cd to current directory
         # activate the conda environment from which this script was started
         current_conda_env = os.environ['CONDA_PREFIX']
@@ -147,11 +147,11 @@ class script_format:
             print('. /pkg/suse12/software/miniconda3/4.5.12/etc/profile.d/conda.sh',file=outfile)
             print('conda activate',file=outfile)
             print("source activate '{}'".format(current_conda_env),file=outfile)
-        if args.file and (args.chunk_num or args.chunk_size):
+        if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
-        if args.file and (args.chunk_num or args.chunk_size):
+        if args.command_file and (args.chunk_num or args.chunk_size):
             print(chunk, file=outfile)
-        if args.file and (args.chunk_num or args.chunk_size):
+        if args.command_file and (args.chunk_num or args.chunk_size):
             print("\necho \"Number of failed commands: $NUM_FAILED\"\n", file=outfile)
      
     @staticmethod
@@ -282,7 +282,7 @@ if __name__ == '__main__':
     parser.add_argument('--script-tmpdir', help="When '--script -' is specified, write the script to this location as a temporary file", default='/lustre/scratch/microbiome/tmp')
     parser.add_argument('--poll-interval', help="Poll the PBS server once every this many seconds [default: 30]", type=int, default=30)
     parser.add_argument('--no-executable-check', help="Usually mqsub checks the executable is currently available. Don't do this [default: do check]",action='store_true')
-    parser.add_argument('--file', help="A file with list of newline separated commands to be split into chunks and submitted. One command per line. mqsub --file <file.txt> --chunk-num <int>")
+    parser.add_argument('--command-file',dest='command_file', help="A file with list of newline separated commands to be split into chunks and submitted. One command per line. mqsub --file <file.txt> --chunk-num <int>")
     parser.add_argument('--chunk-num',type=int,dest='chunk_num', help='Number of chunks to divide the commands (from --file) into')
     parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --file) per a chunk ')
     parser.add_argument('command',nargs='*',help='command to be run')
@@ -306,11 +306,11 @@ if __name__ == '__main__':
             raise Exception("Cannot specify both --script and a command")
     elif len(args.command) > 0:
         content_type = COMMAND
-    elif (args.chunk_num or args.chunk_size) and args.file is None:
+    elif (args.chunk_num or args.chunk_size) and args.command_file is None:
         raise Exception("--chunk-num or --chunk-size specified, please specify --file")
-    elif (args.chunk_num is None and args.chunk_size is None) and args.file is not None:
+    elif (args.chunk_num is None and args.chunk_size is None) and args.command_file is not None:
         raise Exception("--file specified, please specify --chunk-num or --chunk-size")
-    elif (args.chunk_num or args.chunk_size) and args.file:
+    elif (args.chunk_num or args.chunk_size) and args.command_file:
         args.bg = True    
     else:
         raise Exception("Must specify either --script-stdin, command, or a file to chunk")
@@ -350,8 +350,8 @@ if __name__ == '__main__':
 #%% RUN CHUNKS ##############################
 #############################################
 
-    if args.file and (args.chunk_num or args.chunk_size):
-        with open(args.file) as f:
+    if args.command_file and (args.chunk_num or args.chunk_size):
+        with open(args.command_file) as f:
             chunkID = 1
             commands = f.read().splitlines()
             commands = [s + ' || NUM_FAILED=$((NUM_FAILED + 1))' for s in commands]
