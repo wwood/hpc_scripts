@@ -20,3 +20,6 @@ alias qaddtime=/pkg/hpc/scripts/qaddtime
 export HISTTIMEFORMAT="%F %T "
 PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND ; }"'echo $$ $USER \
                "$(history 1)" >> ~/.bash_eternal_history'
+
+#Path to kingfisher 
+export PATH=/lustre/work-lustre/microbiome/sw/kingfisher-download/bin:$PATH
