@@ -363,6 +363,8 @@ if __name__ == '__main__':
             else:
                 command_name = 'chunk'
             
+            command_name = command_name.replace("/","_").replace(".","",1)
+            
             if args.chunk_num is not None and args.chunk_size is None:
                 num_chunks = int(args.chunk_num)
                 chunks = list(splitter.chunk_num(commands, num_chunks))
