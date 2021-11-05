@@ -21,6 +21,7 @@ import sys
 from smtplib import SMTP
 from time import strftime
 import json
+import os
 
 def run(command, stdin=None):
     '''
@@ -156,21 +157,28 @@ if __name__ == '__main__':
         all_jobs = PbsJobInfo.all_jobs()
         all_names = PbsJobInfo.all_names_user()
     elif args.i is not None:
-        with open(args.i) as file:
-            all_jobs = file.read().splitlines()
-            all_jobs = list(filter(str.strip, all_jobs))
-            if not any(i in all_jobs for i in current_jobs):
-                print('WARNING. Some of the jobs specified in the input file are not currently running. Exiting')
-                sys.exit()
-            else:
-                with open(args.i) as file:
-                    all_jobs = file.read().splitlines()
-                    all_jobs = list(filter(str.strip, all_jobs))
-                    all_names=[]
-                    for i in all_jobs:
-                        cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\'' 
-                        name = run(cmd).decode().splitlines()
-                        all_names += name
+            file1 = open(args.i,"r")
+            file2 = open('temp_joblist','w') 
+            for line in file1:
+                file2.write(line)
+            file1.close()
+            file2.close()            
+            with open('temp_joblist') as file:
+                all_jobs = file.read().splitlines()
+                all_jobs = list(filter(str.strip, all_jobs))
+                if not any(i in all_jobs for i in current_jobs):
+                    print('WARNING. Some of the jobs specified in the input file are not currently running. Exiting')
+                    sys.exit()
+                else:
+                    with open('temp_joblist') as file:
+                        all_jobs = file.read().splitlines()
+                        all_jobs = list(filter(str.strip, all_jobs))
+                        all_names=[]
+                        for i in all_jobs:
+                            cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\''
+                            name = run(cmd).decode().splitlines()
+                            all_names += name
+            os.system('rm temp_joblist')
         
     #%% run qstat every arg.p seconds to compare lists
     starttime = time.time()
