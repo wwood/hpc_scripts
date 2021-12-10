@@ -14,18 +14,13 @@ __status__ = "Development"
 
 import argparse
 import logging
-import sys
 import os
-import tempfile
 import subprocess
 import getpass
-import shutil
 import re
 from datetime import datetime, timedelta
 import datetime
 import json
-import time
-from smtplib import SMTP
 
 ## TODO: Code below copied from the mqsub script. Code shouldn't really be copied but imported.
 
@@ -142,7 +137,7 @@ if __name__ == '__main__':
                     runtime = j['stime']
                     elapsedtime = datetime.datetime.now() - rawtime
                     perctime = int(elapsedtime / walltime * 100)
-                    elapsedtime2 = strfdelta(elapsedtime, '{days} day, {hours} hr, {minutes} min')
+                    elapsedtime2 = strfdelta(elapsedtime, '{days} days, {hours} hrs, {minutes} mins')
                     node=j['exec_host']
                 except KeyError:
                     # Occasional KeyError, maybe when the job just started?
@@ -196,7 +191,7 @@ if __name__ == '__main__':
         dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['username'], d['elapsed time']), reverse = True)
         print('\nList of jobs in queue:')
         print('----------------------')
-        printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime', 'microbiome queue','node'))
+        printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime','node'))
         print('\nTime left until maintenance (hr:min:sec): ' + time_left + '\n')
    
     elif args.avail:
