@@ -129,7 +129,7 @@ class script_format:
         print('#!/bin/bash -l',file=outfile)
         print('#PBS -l ncpus={}'.format(args.cpus),file=outfile)
         print('#PBS -l mem={}gb'.format(mem),file=outfile)
-        print('#PBS -l walltime={}:00:00'.format(args.hours),file=outfile)
+        print('#PBS -l walltime={}:00:00'.format(hours),file=outfile)
         if args.bg and not args.no_email and not args.command_file and not (args.chunk_num or args.chunk_size):
             print('#PBS -m ae',file=outfile) # disbled emailing when running chunks. Too spammy
         print('#PBS -M {}'.format(email),file=outfile)
@@ -282,12 +282,12 @@ if __name__ == '__main__':
     parser.add_argument('--script-tmpdir', help="When '--script -' is specified, write the script to this location as a temporary file", default='/lustre/scratch/microbiome/tmp')
     parser.add_argument('--poll-interval', help="Poll the PBS server once every this many seconds [default: 30]", type=int, default=30)
     parser.add_argument('--no-executable-check', help="Usually mqsub checks the executable is currently available. Don't do this [default: do check]",action='store_true')
-    parser.add_argument('--command-file',dest='command_file', help="A file with list of newline separated commands to be split into chunks and submitted. One command per line. mqsub --file <file.txt> --chunk-num <int>")
+    parser.add_argument('--command-file',dest='command_file', help="A file with list of newline separated commands to be split into chunks and submitted. One command per line. mqsub --command-file <file.txt> --chunk-num <int>")
     parser.add_argument('--chunk-num',type=int,dest='chunk_num', help='Number of chunks to divide the commands (from --command-file) into')
     parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --command-file) per a chunk ')
     parser.add_argument('command',nargs='*',help='command to be run')
     args = parser.parse_args()
-
+    
     # Setup logging
     if args.debug:
         loglevel = logging.DEBUG
@@ -307,13 +307,13 @@ if __name__ == '__main__':
     elif len(args.command) > 0:
         content_type = COMMAND
     elif (args.chunk_num or args.chunk_size) and args.command_file is None:
-        raise Exception("--chunk-num or --chunk-size specified, please specify --file")
+        raise Exception("--chunk-num or --chunk-size specified, please specify --command-file")
     elif (args.chunk_num is None and args.chunk_size is None) and args.command_file is not None:
-        raise Exception("--file specified, please specify --chunk-num or --chunk-size")
+        raise Exception("--command-file specified, please specify --chunk-num or --chunk-size")
     elif (args.chunk_num or args.chunk_size) and args.command_file:
         args.bg = True    
     else:
-        raise Exception("Must specify either --script-stdin, command, or a file to chunk")
+        raise Exception("Must specify either --script-stdin, command, or a --command-file to chunk")
 
     time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip().split(':')[0]
     if args.hours is not None:
