@@ -99,14 +99,23 @@ if __name__ == '__main__':
         print('Latest version: ' + version)
     
     else:
-        print('Installer: ' + installer)
-        print('Package: ' + package)
-        print('Checking for latest version...')
+        conda_env_path = os.environ['CONDA_ENV_PATH']            
         version = str(run(("{} search {} | awk '{{print $2}}' | tail -n1").format(installer, package)).decode()).rstrip()
-        print('Latest version: ' + version)
         environment_name = package + '-v' + version
-        print('Creating a new environment entitled ' + environment_name + ' using ' + installer + '...')
-        run(("{} create -y -n {} {}={}").format(installer, environment_name, package, version))
+        package_env_path = os.path.join(conda_env_path + environment_name)
+        
+        if os.path.exists(package_env_path):
+            print('A current version of this package is already installed. Exiting...')
+            print('Installation location: ' + package_env_path)
+            exit()
+        else:
+            print('Installer: ' + installer)
+            print('Package: ' + package)
+            print('Checking for latest version...')   
+            print('Latest version: ' + version)
+            print('Creating a new environment entitled ' + environment_name + ' using ' + installer + '...')
+            print('Installation location: ' + package_env_path)
+            run(("{} create -y -n {} {}={}").format(installer, environment_name, package, version))
         
     
     
