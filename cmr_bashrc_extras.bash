@@ -1,5 +1,5 @@
 # Add HPC scripts e.g. mqsub to the path
-export PATH="/work2/microbiome/sw/hpc_scripts/bin:$PATH"
+export PATH="/lustre/work-lustre/microbiome/sw/hpc_scripts/bin:$PATH"
 
 #function for command prompt and email notification of job completion
 function notify { command "$@" && success || fail; }
@@ -10,16 +10,16 @@ function notify { command "$@" && success || fail; }
 
 #check for nextflow config
 if [[ ! -e ~/.nextflow/config ]]; then
-    NEXTFLOW_CONFIG=/work2/microbiome/sw/nextflow_config/config
+    NEXTFLOW_CONFIG=/lustre/work-lustre/microbiome/sw/nextflow_config/config
 fi
 
-# Otherwise qaddtime is only available on lyra
-alias qaddtime=/pkg/hpc/scripts/qaddtime
+# Otherwise qaddtime is only available on lyra # currently disabled due to abuse
+#alias qaddtime=/pkg/hpc/scripts/qaddtime
 
 # Save all the history, see https://debian-administration.org/article/543/Bash_eternal_history
 export HISTTIMEFORMAT="%F %T "
 PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND ; }"'echo $$ $USER \
                "$(history 1)" >> ~/.bash_eternal_history'
 
-#Path to kingfisher 
-export PATH=/lustre/work-lustre/microbiome/sw/kingfisher-download/bin:$PATH
+#Path to kingfisher # symlinked /lustre/work-lustre/microbiome/sw/kingfisher-download/bin/kingfisher in $CONDA_PREFIX/envs/kingfisher/bin instead
+#export PATH=/lustre/work-lustre/microbiome/sw/kingfisher-download/bin:$PATH
