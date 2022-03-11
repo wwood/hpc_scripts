@@ -30,40 +30,33 @@ def run(command, stdin=None):
     returning the stdout. If the command fails (i.e. has a non-zero exitstatus),
     raise a ExternCalledProcessError that includes the $stderr as part of
     the error message
-
     Parameters
     ----------
     command: str
         command to run
     stdin: str or None
         stdin to be provided to the process, to subprocess.communicate.
-
     Returns
     -------
     Standard output of the run command
-
     Exceptions
     ----------
     extern.ExternCalledProcessError including stdout and stderr of the run
     command should it return with non-zero exit status.
-
     Parameters
     ----------
     command : TYPE
         DESCRIPTION.
     stdin : TYPE, optional
         DESCRIPTION. The default is None.
-
     Raises
     ------
     ExternCalledProcessError
         DESCRIPTION.
-
     Returns
     -------
     stdout : TYPE
         DESCRIPTION.
-
     '''
     #logging.debug("Running extern cmd: %s" % command)
 
@@ -98,100 +91,107 @@ class PbsJobInfo:
     @staticmethod
     def current_jobs():
         return run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
-    
+
     @staticmethod
     def all_jobs():
         return run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
-    
+
     @staticmethod
     def all_names_user():
         return run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $4}\'').decode().splitlines()
-        
+
 #%%parse
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='''
-      _ __ ___   __ ___      ____ _(_) |_ 
+      _ __ ___   __ ___      ____ _(_) |_
      | '_ ` _ \ / _` \ \ /\ / / _` | | __|
-     | | | | | | (_| |\ V  V / (_| | | |_ 
+     | | | | | | (_| |\ V  V / (_| | | |_
      |_| |_| |_|\__, | \_/\_/ \__,_|_|\__|
-                   |_|                    
-    
+                   |_|
+
     Typing 'mqwait' will email you once all your currently queued jobs finish.
-    
+
     Alternatively, you can:
         (1) specify a file containing a list of PBS job IDs you wish to be notified by once they finish.
         (2) pipe a series of mqsub jobs into mqwait by appending '|& mqsub -m'. It parses STDERR so must be piped using \'|&\' and mqsub must also be run in the background using \'--bg\'.
             Must be a single command encompassing multiple mqsub commands, or a series of commands executed in a single script.
             i.e. \'parallel mqsub --no-email --bg ... |& mqwait -m\'
                  \'mqsub_jobs.sh |& mqwait -m\'
-    
+
     ''',formatter_class=RawTextHelpFormatter)
     parser.add_argument('-i', help='Input file containing a newline separated list of PBS job names (i.e. 123456.pbs)', required=False, dest='i', metavar='file')
     parser.add_argument('-p', help='Polling rate (in seconds) [default = 60]',  default=60.0, dest='p', metavar='secs', type=int)
     parser.add_argument('-l', help='Verbosely displays the number of remaining jobs. Controlled by the polling rate (-p)', action='store_true', default=False, dest='l')
     parser.add_argument('-m', help='Takes piped output from mqsub and waits on those jobs.', action='store_true', default=False, dest='m')
     args = parser.parse_args()
-    
+
     #%% check and get job lists
-    current_jobs = PbsJobInfo.current_jobs()
-    if len(current_jobs) == 0:
-        print('No jobs of yours appear to be running')
-        sys.exit(0)
-    else:
-        print("Initially found {} jobs".format(len(current_jobs)))
-    
-    if args.m is True and args.i is None:
-        output = subprocess.getoutput("grep 'INFO: qsub stdout was:'").splitlines()
-        all_jobs=[i.split()[7] for i in output]
-        all_names=[]
-        for i in all_jobs:
-            cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\'' 
-            name = run(cmd).decode().splitlines()
-            all_names += name
-        print('Adding the following mqsub jobs to mqwait: ' + ' '.join(all_jobs))
-        print('Corresponding to the following job names: ' + ' '.join(all_names))
-    elif args.m is True and args.i is not None:
-        print('WARNING. -m and -i cannot be specified at the same time. Exiting')
-        sys.exit()
-    elif args.i is None:
-        all_jobs = PbsJobInfo.all_jobs()
-        all_names = PbsJobInfo.all_names_user()
-    elif args.i is not None:
-            file1 = open(args.i,"r")
-            file2 = open('temp_joblist','w') 
-            for line in file1:
-                file2.write(line)
-            file1.close()
-            file2.close()            
-            with open('temp_joblist') as file:
-                all_jobs = file.read().splitlines()
-                all_jobs = list(filter(str.strip, all_jobs))
-                if not any(i in all_jobs for i in current_jobs):
-                    print('WARNING. Some of the jobs specified in the input file are not currently running. Exiting')
-                    sys.exit()
-                else:
+    while True:
+        try:
+            current_jobs = PbsJobInfo.current_jobs()
+            if len(current_jobs) == 0:
+                print('No jobs of yours appear to be running')
+                sys.exit(0)
+            else:
+                print("Found {} job(s)".format(len(current_jobs)))
+
+            if args.m is True and args.i is None:
+                output = subprocess.getoutput("grep 'INFO: qsub stdout was:'").splitlines()
+                all_jobs=[i.split()[7] for i in output]
+                all_names=[]
+                for i in all_jobs:
+                    cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\''
+                    name = run(cmd).decode().splitlines()
+                    all_names += name
+                print('Adding the following mqsub jobs to mqwait: ' + ' '.join(all_jobs))
+                print('Corresponding to the following job names: ' + ' '.join(all_names))
+            elif args.m is True and args.i is not None:
+                print('WARNING. -m and -i cannot be specified at the same time. Exiting')
+                sys.exit()
+            elif args.i is None:
+                all_jobs = PbsJobInfo.all_jobs()
+                all_names = PbsJobInfo.all_names_user()
+            elif args.i is not None:
+                    file1 = open(args.i,"r")
+                    file2 = open('temp_joblist','w')
+                    for line in file1:
+                        file2.write(line)
+                    file1.close()
+                    file2.close()
                     with open('temp_joblist') as file:
                         all_jobs = file.read().splitlines()
                         all_jobs = list(filter(str.strip, all_jobs))
-                        all_names=[]
-                        for i in all_jobs:
-                            cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\''
-                            name = run(cmd).decode().splitlines()
-                            all_names += name
-            os.system('rm temp_joblist')
-        
+                        print('-i specified, mqwait will notify when {} of theose jobs complete...'.format(len(all_jobs)))
+                        if not any(i in all_jobs for i in current_jobs):
+                            print('WARNING. Some of the jobs specified in the input file are not currently running. Exiting')
+                            sys.exit()
+                        else:
+                            with open('temp_joblist') as file:
+                                all_jobs = file.read().splitlines()
+                                all_jobs = list(filter(str.strip, all_jobs))
+                                all_names=[]
+                                for i in all_jobs:
+                                    cmd = 'qstat -r ' + i + ' | tail -n +6 | column -t | awk \'{print $4}\''
+                                    name = run(cmd).decode().splitlines()
+                                    all_names += name
+                    os.system('rm temp_joblist')
+            break
+        except:
+            print('Server issues may be occuring. Sleeping for 2 min...')
+            time.sleep(120)
+
     #%% run qstat every arg.p seconds to compare lists
     starttime = time.time()
     while True:
         current_jobs = PbsJobInfo.current_jobs()
-        if args.l is True:           
-            total_job_number = str(len(all_jobs))    
+        if args.l is True:
+            total_job_number = str(len(all_jobs))
             all_jobs_set = set(all_jobs)
             remaining_jobs = all_jobs_set.intersection(current_jobs)
             remaining_jobs_number = str(len(remaining_jobs))
             msg = 'mqwait: ' + remaining_jobs_number + ' out of ' + total_job_number + ' jobs remaining'
             print(strftime("%Y-%m-%d %H:%M:%S") + '\t' + msg)
-            sys.stdout.flush()  
+            sys.stdout.flush()
         if any(i in current_jobs for i in all_jobs):
             None
         else:
@@ -209,7 +209,4 @@ if __name__ == '__main__':
                 smtp.sendmail('CMR_HPC','{}@qut.edu.au'.format(getpass.getuser()),'Subject: mqwait has finished\n\nThe following PBS job(s) completed:\n{}\n\nCorresponding with the following job name(s):\n{}\n\n{} out of {} jobs finished successfully with an exit status 0'.format('\n'.join(all_jobs),'\n'.join(all_names),'\n'.join(exit_0),'\n'.join(status_total)))
             break
         time.sleep(args.p - ((time.time() - starttime) % args.p))
-
-
-
 
