@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+
+###############################################################################
+#
+#    Copyright (C) 2020 Ben Woodcroft
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+###############################################################################
+
+__author__ = "Ben Woodcroft"
+__copyright__ = "Copyright 2020"
+__credits__ = ["Ben Woodcroft"]
+__license__ = "GPL3"
+__maintainer__ = "Ben Woodcroft"
+__email__ = "benjwoodcroft near gmail.com"
+__status__ = "Development"
+
+import argparse
+import logging
+from posixpath import split
+import sys
+import os
+
+if __name__ == '__main__':
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument('--debug', help='output debug information', action="store_true")
+    #parent_parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
+    parent_parser.add_argument('--quiet', help='only output errors', action="store_true")
+
+    parent_parser.add_argument('-k','--key-file', help='File containing key to relative paths of split files.', required=True)
+    parent_parser.add_argument('-f', help='Keys to transform into absolute paths.', required=True)
+
+    args = parent_parser.parse_args()
+
+    # Setup logging
+    if args.debug:
+        loglevel = logging.DEBUG
+    elif args.quiet:
+        loglevel = logging.ERROR
+    else:
+        loglevel = logging.INFO
+    logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+    # Read in the key file
+    key_dict = {}
+    with open(args.key_file, 'r') as f:
+        for line in f:
+            splits = line.strip().split('\t')
+            if len(splits) == 1:
+                key = os.path.basename(splits[0])
+                value = splits[0]
+            elif len(splits) == 2:
+                key = splits[0]
+                value = splits[1]
+            else:
+                raise Exception("Unexpectedly found >2 splits in key file: {}".format(line))
+            key_dict[key] = value
+    logging.debug("Read in {} keys e.g. {}".format(len(key_dict), key_dict.get(next(iter(key_dict)))))
+
+    # Convert query keys to absolute paths
+    base_directory = os.path.dirname(os.path.realpath(args.key_file))
+    num_not_found = 0
+    with open(args.f) as f:
+        for line in f:
+            key = line.strip()
+            if key in key_dict:
+                print(os.path.join(base_directory, key_dict[key]))
+            else:
+                num_not_found += 1
+                logging.error("{} not found in key file".format(key))
+                if num_not_found > 10:
+                    raise Exception(">10 keys not found in key file")
+
+    if num_not_found > 0:
+        raise Exception("One or more keys not found in key file")
