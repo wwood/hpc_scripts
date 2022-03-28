@@ -1,5 +1,5 @@
 # Add HPC scripts e.g. mqsub to the path
-export PATH="/lustre/work-lustre/microbiome/sw/hpc_scripts/bin:$PATH"
+export PATH="/mnt/hpccs01/work/microbiome/sw/hpc_scripts/bin:$PATH"
 
 #function for command prompt and email notification of job completion
 function notify { command "$@" && success || fail; }
@@ -10,7 +10,7 @@ function notify { command "$@" && success || fail; }
 
 #check for nextflow config
 if [[ ! -e ~/.nextflow/config ]]; then
-    NEXTFLOW_CONFIG=/lustre/work-lustre/microbiome/sw/nextflow_config/config
+    NEXTFLOW_CONFIG=/mnt/hpccs01/work/microbiome/sw/nextflow_config/config
 fi
 
 # Otherwise qaddtime is only available on lyra # currently disabled due to abuse
