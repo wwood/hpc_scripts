@@ -315,18 +315,18 @@ if __name__ == '__main__':
     else:
         raise Exception("Must specify either --script-stdin, command, or a --command-file to chunk")
 
-#    time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip().split(':')[0]
-#    if args.hours is not None:
-#        time_required = int(args.hours)
-#    if args.days is not None:
-#        time_required = int(args.days) * 24
-#    if args.weeks is not None:
-#        time_required = int(args.weeks) * 168
-#    if int(time_required) > int(time_left):
-#        print('\n###################################################################')
-#        print('WARNING: The requested walltime coincides with server maintenance.')
-#        print('###################################################################\n')
-#
+    time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip().split(':')[0]
+    if args.hours is not None:
+        time_required = int(args.hours)
+    if args.days is not None:
+        time_required = int(args.days) * 24
+    if args.weeks is not None:
+        time_required = int(args.weeks) * 168
+    if int(time_required) > int(time_left):
+        print('\n###################################################################')
+        print('WARNING: The requested walltime coincides with server maintenance.')
+        print('###################################################################\n')
+
     if args.mem is None:
         mem = 4*args.cpus
     else:
