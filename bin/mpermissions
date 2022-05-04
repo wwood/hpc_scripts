@@ -2,8 +2,6 @@
 
 # Must be python3.4-compatible since that is what is on the lyra base
 
-# Script to more easily submit jobs to the QUT HPC queuing system
-
 __author__ = "Ben Woodcroft"
 __copyright__ = "Copyright 2022"
 __credits__ = ["Ben Woodcroft"]
@@ -72,11 +70,12 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
                 self.stdout)
 
 ## TODO: Code below copied from the mqsub script. Code shouldn't really be copied but imported.
-            
+
 #%% parse
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='''                                                                                                        
-    Create an environment using the latest version of a package.
+    parser = argparse.ArgumentParser(description='''
+    Apply the correct group permissions to a directory.
+    Example: mpermissions -g microbiome <dir_name>
     ''',formatter_class=RawTextHelpFormatter)
     parser.add_argument('folder',help='folder to apply permissions to')
     parser.add_argument('-g', help='Add permissions for this group', required=True)
@@ -84,7 +83,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-group-write', help='Do not add group write permissions', action='store_true')
     parser.add_argument('--dry-run', help='Do not actually run commands', action='store_true')
     args = parser.parse_args()
-    
+
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
     folder=args.folder
@@ -122,6 +121,5 @@ if __name__ == '__main__':
                 logging.error("Command stderr: {}".format(e.stderr))
                 logging.error("Command return code: {}".format(e.returncode))
                 logging.error("Command completed process: {}".format(e.completed_process))
-                
+
                 logging.info("Continuing with other commands, if there are any ..")
-    
