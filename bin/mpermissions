@@ -92,13 +92,15 @@ if __name__ == '__main__':
     logging.info("Setting permissions on folder {} for group {}".format(folder,owner_group))
     folder2 = "'{}'".format(folder)
 
-    group_permissions = 'rwx'
+    dir_group_permissions = 'rwx'
+    file_group_permissions = 'rw-'
     if args.no_group_write:
-        group_permissions = 'r-x'
-    cmd1 = 'setfacl -R -m g:microbiome-admin:rwx,g::{},u::rwx,o::--- {}'.format(group_permissions, folder2)
-    cmd2 = 'setfacl -R -dm g:microbiome-admin:rwx,g::{},u::rwx,o::--- {}'.format(group_permissions, folder2)
+        dir_group_permissions = 'r-x'
+        file_group_permissions = 'r--'
+    cmd1 = 'find {} -type d -exec setfacl -dm g:microbiome-admin:rwx,g::{},u::rwx,o::--- {{}} +'.format(folder2, dir_group_permissions)
+    cmd2 = 'find {} -type f -exec setfacl -m g:microbiome-admin:rw-,g::{},u::rw-,o::--- {{}} +'.format(folder2, file_group_permissions)
     cmd3 = 'chgrp -R {} {}'.format(owner_group, folder2)
-    cmd4 = 'chmod -R g+s {}'.format(folder2)
+    cmd4 = 'find {} -type d -exec chmod g+s {{}} +'.format(folder2)
 
     if not os.path.exists(folder):
         raise Exception("Folder {} does not exist".format(folder))
