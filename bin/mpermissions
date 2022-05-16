@@ -97,7 +97,7 @@ if __name__ == '__main__':
     if args.no_group_write:
         dir_group_permissions = 'r-x'
         file_group_permissions = 'r--'
-    cmd1 = 'find {} -type d -exec setfacl -dm g:microbiome-admin:rwx,g::{},u::rwx,o::--- {{}} +'.format(folder2, dir_group_permissions)
+    cmd1 = 'find {} -type d -exec setfacl -d -m g:microbiome-admin:rwx,g::{},u::rwx,o::--- {{}} +'.format(folder2, dir_group_permissions)
     cmd2 = 'find {} -type f -exec setfacl -m g:microbiome-admin:rw-,g::{},u::rw-,o::--- {{}} +'.format(folder2, file_group_permissions)
     cmd3 = 'chgrp -R {} {}'.format(owner_group, folder2)
     cmd4 = 'find {} -type d -exec chmod g+s {{}} +'.format(folder2)
