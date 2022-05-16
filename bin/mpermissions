@@ -97,7 +97,8 @@ if __name__ == '__main__':
     if args.no_group_write:
         dir_group_permissions = 'r-x'
         file_group_permissions = 'r--'
-    cmd1 = 'find {} -type d -exec setfacl -d -m g:microbiome-admin:rwx,g::{},u::rwx,o::--- {{}} +'.format(folder2, dir_group_permissions)
+    cmd1 = 'find {} -type d -exec setfacl -d g:microbiome-admin:rwx,g::{},u::rwx,o::--- {{}} +'.format(folder2, dir_group_permissions)
+    cmd1b = 'find {} -type d -exec setfacl -m g:microbiome-admin:rwx,g::{},u::rwx,o::--- {{}} +'.format(folder2, dir_group_permissions)
     cmd2 = 'find {} -type f -exec setfacl -m g:microbiome-admin:rw-,g::{},u::rw-,o::--- {{}} +'.format(folder2, file_group_permissions)
     cmd3 = 'chgrp -R {} {}'.format(owner_group, folder2)
     cmd4 = 'find {} -type d -exec chmod g+s {{}} +'.format(folder2)
@@ -105,7 +106,7 @@ if __name__ == '__main__':
     if not os.path.exists(folder):
         raise Exception("Folder {} does not exist".format(folder))
 
-    for cmd in [cmd1, cmd2, cmd3, cmd4]:
+    for cmd in [cmd1, cmd1b, cmd2, cmd3, cmd4]:
         logging.info('Running: {}'.format(cmd))
 
         if not args.dry_run:
