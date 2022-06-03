@@ -128,6 +128,7 @@ class script_format:
     def header(outfile):
         print('#!/bin/bash -l',file=outfile)
         print('#PBS -l ncpus={}'.format(args.cpus),file=outfile)
+        print('#PBS -l ngpus={}'.format(args.gpu),file=outfile)        
         print('#PBS -l mem={}gb'.format(mem),file=outfile)
         print('#PBS -l walltime={}:00:00'.format(hours),file=outfile)
         if args.bg and not args.no_email and not args.command_file and not (args.chunk_num or args.chunk_size):
@@ -266,6 +267,7 @@ if __name__ == '__main__':
     #parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
     parser.add_argument('--quiet', help='only output errors', action="store_true")
     parser.add_argument('-t','--cpus',default=1,type=int, help="Number of CPUs to queue job with [default: 1]")
+    parser.add_argument('-g','--gpu',type=int,default=0, help="Number of GPUs to use [default: 0]")    
     parser.add_argument('-m','--mem','--ram',type=int, help="GB of RAM to ask for [default: 4*num_cpus]")
     parser.add_argument('--directive', help="Arbitrary PBS directory to add e.g. '-l ngpus=1' to ask for a GPU [default: Not used]")
     parser.add_argument('-q','--queue', default="microbiome", help="Name of queue to send to [default: 'microbiome']")
