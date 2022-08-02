@@ -96,6 +96,10 @@ As per regular mqsub you should specify the amount of resource for the qsub scri
 mqsub -t 16 -m 32 --hours 24 --command-file <file> --chunk-num <int>
 ```
 
+You can also speed up some of your processes by copying data files to a node's SSD prior to running commands. One good use would to copy a database to the SSD and then run a chunk of commands (as per above). To do this, use the --scratch-data option for which multiple paths can be specified. In your mqsub some command you'll need to adjust how you specify the location of the copied files (which are copied to $TMPDIR), for example:
+```
+mqsub --scratch-data ~/gtdb_r207.reassigned.v5.sdb ~/S3.metapackage_20220513.smpkg -- singlem --db1 \$TMPDIR/gtdb_r207.reassigned.v5.sdb \$TMPDIR/S3.metapackage_20220513.smpkg
+```
 
 # mqstat
 To view useful usage statistics (i.e. the percentage of microbiome queue CPUs which are currently in-use/available) simply type `mqstat`. Example output:
