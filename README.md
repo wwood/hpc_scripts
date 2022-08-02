@@ -36,6 +36,7 @@ optional arguments:
   --debug               output debug information
   --quiet               only output errors
   -t CPUS, --cpus CPUS  Number of CPUs to queue job with [default: 1]
+  -g GPU, --gpu GPU     Number of GPUs to use [default: 0]
   -m MEM, --mem MEM, --ram MEM
                         GB of RAM to ask for [default: 4*num_cpus]
   --directive DIRECTIVE
@@ -68,12 +69,17 @@ optional arguments:
   --command-file COMMAND_FILE
                         A file with list of newline separated commands to be
                         split into chunks and submitted. One command per line.
-                        mqsub --file <file.txt> --chunk-num <int>
+                        mqsub --command-file <file.txt> --chunk-num <int>
   --chunk-num CHUNK_NUM
-                        Number of chunks to divide the commands (from --command-file)
-                        into
+                        Number of chunks to divide the commands (from
+                        --command-file) into
   --chunk-size CHUNK_SIZE
                         Number of commands (from --command-file) per a chunk
+  --prelude PRELUDE     Code from this file will be run before each chunk
+  --scratch-data SCRATCH_DATA [SCRATCH_DATA ...]
+                        Data to be copied to a scratch space prior to running
+                        the main command(s). Useful for databases used in
+                        large chunks of jobs.
 
 ```
 
