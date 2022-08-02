@@ -153,7 +153,7 @@ class script_format:
             print(prelude+'\n\n',file=outfile)
         if args.scratch_data:
             for dir in args.scratch_data:
-                print("cp -r '{}' '$TMPDIR/'".format(dir),file=outfile)
+                print("cp -r '{}' $TMPDIR/".format(dir),file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
