@@ -43,6 +43,7 @@ if __name__ == '__main__':
 
     parent_parser.add_argument('-n','--split-lengths',nargs='+',type=int, help='Split input names into these chunk of this length.', required=True)
     parent_parser.add_argument('--names', nargs='+', help='Split these file names [default: Use names on STDIN].')
+    parent_parser.add_argument('--print-folder', action="store_true", help='Print the folder name to as an extra column e.g. to feed into "mkdir -p"')
 
     args = parent_parser.parse_args()
 
@@ -69,4 +70,8 @@ if __name__ == '__main__':
 
         if '/'.join(chunks) in output_filenames:
             raise Exception("Found a clash: {}".format('/'.join(chunks)))
-        print("\t".join([line.strip(), '/'.join(chunks)+'/'+base]))
+        if args.print_folder:
+            to_print = [line.strip(), '/'.join(chunks)+'/'+base, '/'.join(chunks)]
+        else:
+            to_print = [line.strip(), '/'.join(chunks)+'/'+base]
+        print("\t".join(to_print))
