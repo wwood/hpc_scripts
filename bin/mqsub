@@ -150,6 +150,9 @@ class script_format:
             print("conda activate '{}'".format(current_conda_env),file=outfile)
         if prelude:
             print(prelude+'\n\n',file=outfile)
+        if args.scratch_data:
+            for dir in args.scratch_data:
+                print("cp -r '{}' '$TMPDIR/'".format(dir),file=outfile)            
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
@@ -290,6 +293,7 @@ if __name__ == '__main__':
     parser.add_argument('--chunk-num',type=int,dest='chunk_num', help='Number of chunks to divide the commands (from --command-file) into')
     parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --command-file) per a chunk ')
     parser.add_argument('--prelude', help='Code from this file will be run before each chunk')
+    parser.add_argument('--scratch', dest='scratch_data', nargs='+', help='Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs.')
     parser.add_argument('command',nargs='*',help='command to be run')
     args = parser.parse_args()
 
