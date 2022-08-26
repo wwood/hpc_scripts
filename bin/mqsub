@@ -163,93 +163,93 @@ class script_format:
 
     @staticmethod
     def report_running_host(jobinfo):
-                if jobinfo['job_state'] == 'R':
-                    logging.info("Job is running on exec_host {}".format(jobinfo['exec_host']))
+        if jobinfo['job_state'] == 'R':
+            logging.info("Job is running on exec_host {}".format(jobinfo['exec_host']))
 
     @staticmethod
     def submit(outfile):
-            if args.dry_run:
-                with open(outfile.name) as script_written:
-                    logging.info("Script written was:\n{}".format(script_written.read()))
-                logging.info("Not running qsub since this is a dry run")
-                sys.exit(0)
-            else:
-                with open(outfile.name) as script_written:
-                    logging.debug("Script written was:\n{}".format(script_written.read()))
+        if args.dry_run:
+            with open(outfile.name) as script_written:
+                logging.info("Script written was:\n{}".format(script_written.read()))
+            logging.info("Not running qsub since this is a dry run")
+            sys.exit(0)
+        else:
+            with open(outfile.name) as script_written:
+                logging.debug("Script written was:\n{}".format(script_written.read()))
 
-                qsub_stdout = run("qsub {}".format(outfile.name)).decode()
-                logging.info("qsub stdout was: {}".format(qsub_stdout.rstrip()))
-                if not args.bg:
-                    match_result = re.compile('^(\d+\.pbs)\n$').match(qsub_stdout)
-                    if match_result is None:
-                        raise Exception("Unexpected output from qsub: {}".format(qsub_stdout))
-                    else:
-                        job_id = match_result.group(1)
-
-                    last_jobinfo = PbsJobInfo.json(job_id)
-                    last_status = last_jobinfo['job_state']
-                    logging.info('First status of job is {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
-
-                    script_format.report_running_host(last_jobinfo)
-                    while True:
-                        if last_status == 'F':
-                            break
-
-                        current_job_info = PbsJobInfo.json(job_id)
-                        current_job_status = current_job_info['job_state']
-                        if current_job_status != last_status:
-                            logging.debug("last was '{}', current was '{}'".format(last_status, current_job_status))
-                            logging.info('Now status of job is {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
-                            script_format.report_running_host(current_job_info)
-                            last_status = current_job_status
-
-                        if last_status == 'F':
-                            break
-
-                        logging.debug('Not finished (is {}), sleeping for {} seconds'.format(last_status, args.poll_interval))
-                        time.sleep(args.poll_interval)
-
-                    logging.info("Job has finished")
-
-                    j = PbsJobInfo.json(job_id)
-                    exit_status = j['Exit_status'] # add some exit status info here?
-                    r = j['resources_used']
-                    logging.info("resources_used.walltime: {}".format(r['walltime']))
-                    logging.info("resources_used.cpupercent: {}".format(r['cpupercent']))
-                    logging.info("resources_used.cput: {}".format(r['cput']))
-                    logging.info("resources_used.vmem: {}".format(r['vmem']))
-
-                    stdout_path, stderr_path = PbsJobInfo.stdout_and_stderr_paths(job_id)
-                    with open(stdout_path,'r') as f: # Possible this might fail if the stdout is binary?
-                        shutil.copyfileobj(f, sys.stdout)
-                    with open(stderr_path,'r') as f:
-                        shutil.copyfileobj(f, sys.stderr)
-
-                    if not args.no_email:
-                        msg = "job: {}\n".format(job_id)\
-                            +"exit status: {}\n".format(exit_status)\
-                            +"resources_used.walltime: {}\n".format(r['walltime'])\
-                            +"resources_used.cpupercent: {}\n".format(r['cpupercent'])\
-                            +"resources_used.cput: {}\n".format(r['cput'])\
-                            +"resources_used.vmem: {}\n".format(r['vmem'])
-                        if content_type == SCRIPT:
-                            msg = msg+"\nscript_path: {}\n".format(args.script)
-                        else:
-                            msg = msg+"\ncommand: {}\n".format(' '.join(args.command))
-                        msg = msg+"\nThis message was sent by mqsub.\n"
-
-                        if exit_status == 0:
-                            subject = 'mqsub process \'{}\' finished running with exit status 0'.format(jobname)
-                        else:
-                            subject = 'FAIL: mqsub process \'{}\' finished running with exit status {}' .format(jobname, exit_status)
-                        with SMTP(host='localhost',port=0) as smtp:
-                            smtp.sendmail('CMR_HPC',email,'Subject: {}\n\n{}'.format(subject,msg))
-
-                    os.remove(stdout_path)
-                    os.remove(stderr_path)
-                    sys.exit(exit_status)
+            qsub_stdout = run("qsub {}".format(outfile.name)).decode()
+            logging.info("qsub stdout was: {}".format(qsub_stdout.rstrip()))
+            if not args.bg:
+                match_result = re.compile('^(\d+\.pbs)\n$').match(qsub_stdout)
+                if match_result is None:
+                    raise Exception("Unexpected output from qsub: {}".format(qsub_stdout))
                 else:
-                    print("qsub stdout: {}".format(qsub_stdout), file=sys.stderr)
+                    job_id = match_result.group(1)
+
+                last_jobinfo = PbsJobInfo.json(job_id)
+                last_status = last_jobinfo['job_state']
+                logging.info('First status of job is {}: {}'.format(last_status, PbsJobInfo.job_status_english(last_status)))
+
+                script_format.report_running_host(last_jobinfo)
+                while True:
+                    if last_status == 'F':
+                        break
+
+                    current_job_info = PbsJobInfo.json(job_id)
+                    current_job_status = current_job_info['job_state']
+                    if current_job_status != last_status:
+                        logging.debug("last was '{}', current was '{}'".format(last_status, current_job_status))
+                        logging.info('Now status of job is {}: {}'.format(current_job_status, PbsJobInfo.job_status_english(current_job_status)))
+                        script_format.report_running_host(current_job_info)
+                        last_status = current_job_status
+
+                    if last_status == 'F':
+                        break
+
+                    logging.debug('Not finished (is {}), sleeping for {} seconds'.format(last_status, args.poll_interval))
+                    time.sleep(args.poll_interval)
+
+                logging.info("Job has finished")
+
+                j = PbsJobInfo.json(job_id)
+                exit_status = j['Exit_status'] # add some exit status info here?
+                r = j['resources_used']
+                logging.info("resources_used.walltime: {}".format(r['walltime']))
+                logging.info("resources_used.cpupercent: {}".format(r['cpupercent']))
+                logging.info("resources_used.cput: {}".format(r['cput']))
+                logging.info("resources_used.vmem: {}".format(r['vmem']))
+
+                stdout_path, stderr_path = PbsJobInfo.stdout_and_stderr_paths(job_id)
+                with open(stdout_path,'r') as f: # Possible this might fail if the stdout is binary?
+                    shutil.copyfileobj(f, sys.stdout)
+                with open(stderr_path,'r') as f:
+                    shutil.copyfileobj(f, sys.stderr)
+
+                if not args.no_email:
+                    msg = "job: {}\n".format(job_id)\
+                        +"exit status: {}\n".format(exit_status)\
+                        +"resources_used.walltime: {}\n".format(r['walltime'])\
+                        +"resources_used.cpupercent: {}\n".format(r['cpupercent'])\
+                        +"resources_used.cput: {}\n".format(r['cput'])\
+                        +"resources_used.vmem: {}\n".format(r['vmem'])
+                    if content_type == SCRIPT:
+                        msg = msg+"\nscript_path: {}\n".format(args.script)
+                    else:
+                        msg = msg+"\ncommand: {}\n".format(' '.join(args.command))
+                    msg = msg+"\nThis message was sent by mqsub.\n"
+
+                    if exit_status == 0:
+                        subject = 'mqsub process \'{}\' finished running with exit status 0'.format(jobname)
+                    else:
+                        subject = 'FAIL: mqsub process \'{}\' finished running with exit status {}' .format(jobname, exit_status)
+                    with SMTP(host='localhost',port=0) as smtp:
+                        smtp.sendmail('CMR_HPC',email,'Subject: {}\n\n{}'.format(subject,msg))
+
+                os.remove(stdout_path)
+                os.remove(stderr_path)
+                sys.exit(exit_status)
+            else:
+                print("qsub stdout: {}".format(qsub_stdout), file=sys.stderr)
 
 class splitter:
     @staticmethod
