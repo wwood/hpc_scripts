@@ -31,6 +31,13 @@ $ mqsub --hours 1 -- echo hi
 
 There are several other options, which can be viewed with `mqsub -h`
 ```
+Example usage:
+    mqsub -t 24 -m 250 --hours 168 -- aviary recover --pe-1 $R1 --pe-2 $R2 --max-threads 24 --n-cores 24 --output $runID.aviary.output 
+    mqsub -t 8 -m 32 --hours 168 --command-file file.txt --chunk-num 5
+
+positional arguments:
+  command               command to be run
+
 optional arguments:
   -h, --help            show this help message and exit
   --debug               output debug information
@@ -40,8 +47,7 @@ optional arguments:
   -m MEM, --mem MEM, --ram MEM
                         GB of RAM to ask for [default: 4*num_cpus]
   --directive DIRECTIVE
-                        Arbitrary PBS directory to add e.g. '-l ngpus=1' to
-                        ask for a GPU [default: Not used]
+                        Arbitrary PBS directory to add e.g. '-l ngpus=1' to ask for a GPU [default: Not used]
   -q QUEUE, --queue QUEUE
                         Name of queue to send to [default: 'microbiome']
   --hours HOURS         Hours to run for [default: 1 week]
@@ -49,37 +55,32 @@ optional arguments:
   --weeks WEEKS         Weeks to run for [default 1]
   --name NAME           Name of the job [default: first word of command]
   --dry-run             Print script to STDOUT and do not lodge it with qsub
-  --bg                  Submit the job, then quit [default: wait until job is
-                        finished before exiting]
-  --no-email            Do not send any emails, either on job finishing or
-                        aborting
+  --bg                  Submit the job, then quit [default: wait until job is finished before exiting]
+  --no-email            Do not send any emails, either on job finishing or aborting
   --script SCRIPT       Script to run, or "-" for STDIN
   --script-shell SCRIPT_SHELL
-                        Run script specified in --script with this shell
-                        [default: /bin/bash]
+                        Run script specified in --script with this shell [default: /bin/bash]
   --script-tmpdir SCRIPT_TMPDIR
-                        When '--script -' is specified, write the script to
-                        this location as a temporary file
+                        When '--script -' is specified, write the script to this location as a temporary file
   --poll-interval POLL_INTERVAL
-                        Poll the PBS server once every this many seconds
-                        [default: 30]
+                        Poll the PBS server once every this many seconds [default: 30]
   --no-executable-check
-                        Usually mqsub checks the executable is currently
-                        available. Don't do this [default: do check]
+                        Usually mqsub checks the executable is currently available. Don't do this [default: do check]
   --command-file COMMAND_FILE
-                        A file with list of newline separated commands to be
-                        split into chunks and submitted. One command per line.
-                        mqsub --command-file <file.txt> --chunk-num <int>
+                        A file with list of newline separated commands to be split into chunks and submitted. One command per line. mqsub --command-file <file.txt> --chunk-num <int>
   --chunk-num CHUNK_NUM
-                        Number of chunks to divide the commands (from
-                        --command-file) into
+                        Number of chunks to divide the commands (from --command-file) into
   --chunk-size CHUNK_SIZE
-                        Number of commands (from --command-file) per a chunk
+                        Number of commands (from --command-file) per a chunk 
   --prelude PRELUDE     Code from this file will be run before each chunk
   --scratch-data SCRATCH_DATA [SCRATCH_DATA ...]
-                        Data to be copied to a scratch space prior to running
-                        the main command(s). Useful for databases used in
-                        large chunks of jobs.
+                        Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs.
+  --run-tmp-dir         Executes your command(s) on the local SSD ($TMPDIR/mqsub_processing) of a node. IMPORTANT: Dont use absolute paths for the --output of your command(s), it will force the data there instead.
+
+----------------------------------------------------------------------------------------------------------
+Full README can be found on the CMR github - https://github.com/centre-for-microbiome-research/hpc_scripts
+Further information can also be found in the CMR Compute Notes -  https://tinyurl.com/cmr-internal-compute
+
 
 ```
 
@@ -96,10 +97,25 @@ As per regular mqsub you should specify the amount of resource for the qsub scri
 mqsub -t 16 -m 32 --hours 24 --command-file <file> --chunk-num <int>
 ```
 
-You can also speed up some of your processes by copying data files to a node's SSD prior to running commands. One good use would to copy a database to the SSD and then run a chunk of commands (as per above). To do this, use the --scratch-data option for which multiple paths can be specified. In your mqsub some command you'll need to adjust how you specify the location of the copied files (which are copied to $TMPDIR), for example:
+You can also speed up some of your processes by copying data files to a node's SSD prior to running commands. One good use would to copy a database to the SSD and then run a chunk of commands (as per above). To do this, use the `--scratch-data` option for which multiple paths can be specified. In your mqsub some command you'll need to adjust how you specify the location of the copied files (which are copied to $TMPDIR), for example:
 ```
 mqsub --scratch-data ~/gtdb_r207.reassigned.v5.sdb ~/S3.metapackage_20220513.smpkg -- singlem --db1 \$TMPDIR/gtdb_r207.reassigned.v5.sdb \$TMPDIR/S3.metapackage_20220513.smpkg
 ```
+
+Certain workflows demand a lot of IO (for example: assemblies, or any multiple instances of a program run in parrallel). This can put strain upon the filesystem and it's reccomended to run these workflows on the 1TB SSD of each node. To do this, specify `--run-tmp-dir`, and your the files in your output directory will be processed on the SSD and then copied back to your current working directory once complete. You can use this functionality for regular mqsub, as well as chunks (the output will be moved back to Lustre once all jobs in the chunk complete).
+**IMPORTANT:** you must specify absolute paths to your input files and a relative path for your output directory. For example:
+```
+mqsub \
+-t 32 \
+-m 250 \
+-- aviary complete \
+--pe-1 /work/microbiome/human/fastq/reads_R1.fastq.gz \
+--pe-2 /work/microbiome/human/fastq/reads_R2.fastq.gz \
+--output aviary_output1 \
+--run-tmp-dir
+
+```
+
 
 # mqstat
 To view useful usage statistics (i.e. the percentage of microbiome queue CPUs which are currently in-use/available) simply type `mqstat`. Example output:
