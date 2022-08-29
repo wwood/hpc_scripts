@@ -159,8 +159,8 @@ class script_format:
             tmp_dir = binascii.b2a_hex(os.urandom(15)).decode()
             user = os.getuid()
             print("\n#Change to scratch dir for processing",file=outfile)
-            print("mkdir -p '/data1/mqsub_processing_{}/{}'".format(user,tmp_dir),file=outfile)
-            print("cd '/data1/mqsub_processing_{}/{}'\n".format(user,tmp_dir),file=outfile)
+            print("mkdir -p '$TMPDIR/mqsub_processing_{}/{}'".format(user,tmp_dir),file=outfile)
+            print("cd '$TMPDIR/mqsub_processing_{}/{}'\n".format(user,tmp_dir),file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
@@ -322,7 +322,7 @@ Example usage:
     parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --command-file) per a chunk ')
     parser.add_argument('--prelude', help='Code from this file will be run before each chunk')
     parser.add_argument('--scratch-data', dest='scratch_data', nargs='+', help='Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs.')
-    parser.add_argument('--run-tmp-dir', dest='run_tmp_dir',action='store_true', help='Executes your command(s) on the local SSD (/data1/mqsub_processing) of a node. IMPORTANT: Dont use absolute paths for the --output of your command(s), it will force the data there instead.')
+    parser.add_argument('--run-tmp-dir', dest='run_tmp_dir',action='store_true', help='Executes your command(s) on the local SSD ($TMPDIR/mqsub_processing) of a node. IMPORTANT: Dont use absolute paths for the --output of your command(s), it will force the data there instead.')
     parser.add_argument('command',nargs='*',help='command to be run')
     parser.epilog = '''
 ----------------------------------------------------------------------------------------------------------
