@@ -130,10 +130,10 @@ if __name__ == '__main__':
         try:
             current_jobs = PbsJobInfo.current_jobs()
             if len(current_jobs) == 0:
-                print('No jobs of yours appear to be running')
+                print('None of your jobs appear to be running')
                 sys.exit(0)
             else:
-                print("Found {} job(s)".format(len(current_jobs)))
+                print("Found {} job(s), in total.".format(len(current_jobs)))
 
             if args.m is True and args.i is None:
                 output = subprocess.getoutput("grep 'INFO: qsub stdout was:'").splitlines()
@@ -161,7 +161,7 @@ if __name__ == '__main__':
                     with open('temp_joblist') as file:
                         all_jobs = file.read().splitlines()
                         all_jobs = list(filter(str.strip, all_jobs))
-                        print('-i specified, mqwait will notify when {} of theose jobs complete...'.format(len(all_jobs)))
+                        print('-i specified, mqwait will notify when {} of those jobs complete...'.format(len(all_jobs)))
                         if not any(i in all_jobs for i in current_jobs):
                             print('WARNING. Some of the jobs specified in the input file are not currently running. Exiting')
                             sys.exit()
