@@ -6,7 +6,7 @@
 
 __author__ = "Ben Woodcroft, Peter Sternes"
 __copyright__ = "Copyright 2022"
-__credits__ = ["Ben Woodcroft"]
+__credits__ = ["Ben Woodcroft, Peter Sternes"]
 __license__ = "GPL3"
 __maintainer__ = "Ben Woodcroft, Peter Sternes"
 __email__ = "benjwoodcroft near gmail.com"
@@ -17,6 +17,7 @@ from argparse import RawTextHelpFormatter,SUPPRESS
 import logging
 import sys
 import os
+import binascii
 import tempfile
 import subprocess
 import getpass
@@ -154,6 +155,12 @@ class script_format:
         if args.scratch_data:
             for dir in args.scratch_data:
                 print("cp -r '{}' $TMPDIR/".format(dir),file=outfile)
+        if args.run_tmp_dir:
+            tmp_dir = binascii.b2a_hex(os.urandom(15)).decode()
+            user = os.getuid()
+            print("\n#Change to scratch dir for processing",file=outfile)
+            print("mkdir -p '/data1/mqsub_processing_{}/{}'".format(user,tmp_dir),file=outfile)
+            print("cd '/data1/mqsub_processing_{}/{}'\n".format(user,tmp_dir),file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
@@ -161,6 +168,15 @@ class script_format:
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\necho \"Number of failed commands: $NUM_FAILED\"\n", file=outfile)
 
+    @staticmethod
+    def tail(outfile):
+        if args.run_tmp_dir:
+            working_dir = os.getcwd()
+            print("\n#Move output from scratch",file=outfile)           
+            print("mv * '{}'".format(working_dir),file=outfile)
+            print("rm -rf $PWD",file=outfile)
+            print("cd '{}'".format(working_dir),file=outfile)
+            
     @staticmethod
     def report_running_host(jobinfo):
         if jobinfo['job_state'] == 'R':
@@ -306,6 +322,7 @@ Example usage:
     parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --command-file) per a chunk ')
     parser.add_argument('--prelude', help='Code from this file will be run before each chunk')
     parser.add_argument('--scratch-data', dest='scratch_data', nargs='+', help='Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs.')
+    parser.add_argument('--run-tmp-dir', dest='run_tmp_dir',action='store_true', help='Executes your command(s) on the local SSD (/data1/mqsub_processing) of a node. IMPORTANT: Dont use absolute paths for the --output of your command(s), it will force the data there instead.')
     parser.add_argument('command',nargs='*',help='command to be run')
     parser.epilog = '''
 ----------------------------------------------------------------------------------------------------------
@@ -409,6 +426,7 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
                 with open(command_name + str(chunkID) +'.sh', 'w') as outfile:
                     chunk = "\n".join(s for s in chunk)
                     script_format.header(outfile, prelude if args.prelude else None)
+                    script_format.tail(outfile)
                 chunkID = chunkID + 1
 
                 if args.dry_run:
@@ -485,9 +503,9 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
                     # Delete the script after completion so it cleans up, but keep the exitstatus of the original script as the exitstatus of the qsub
                     print('{} {} && rm {}'.format(args.script_shell, script_path, script_path),file=tf)
                 else:
-                    script_path = args.script
+                    script_path = os.path.abspath(args.script)
                     print('{} {}'.format(args.script_shell, script_path),file=tf)
-
+            
+            script_format.tail(tf)            
             tf.flush()
-
             script_format.submit(tf)
