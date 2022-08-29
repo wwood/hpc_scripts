@@ -172,6 +172,7 @@ In this example pbs_job_list would contain:
 
 Specifying the `-l` parameter will verbosely display the number of remaining jobs on your terminal and it controlled by the polling rate `-p` (default 60 seconds)
 
+
 # mcreate
 This is a basic script which searches for the latest version of conda package and creates a new, versioned, environment using conda (with the `-c` parameter) or mamba (default; requires mamba to be installed first).
 
@@ -179,3 +180,7 @@ Simply: `mcreate <package_name>`
 
 You can also check for the latest version of a package without installing:
 `mcreate <package_name> -v`
+
+
+# CMR Compute Notes
+Further information can also be found in the CMR Compute Notes -  https://tinyurl.com/cmr-internal-compute
