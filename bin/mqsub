@@ -3,7 +3,6 @@
 # Must be python3.4-compatible since that is what is on the lyra base
 
 # Script to more easily submit jobs to the QUT HPC queuing system
-#
 
 __author__ = "Ben Woodcroft, Peter Sternes"
 __copyright__ = "Copyright 2022"
@@ -155,7 +154,10 @@ class script_format:
             print(prelude+'\n\n',file=outfile)
         if args.scratch_data:
             for dir in args.scratch_data:
-                print("cp -r '{}' $TMPDIR/".format(dir),file=outfile)
+                if os.path.exists(os.path.abspath(dir)):
+                    print("cp -r -L '{}' $TMPDIR/".format(os.path.abspath(dir)),file=outfile)
+                else:
+                    raise Exception('{} not found. Exiting'.format(dir))
         if args.run_tmp_dir:
             tmp_dir = binascii.b2a_hex(os.urandom(15)).decode()
             user = os.getuid()
@@ -175,7 +177,6 @@ class script_format:
             working_dir = os.getcwd()
             print("\n#Move output from scratch",file=outfile)           
             print("mv * '{}'".format(working_dir),file=outfile)
-            print("rm -rf $PWD",file=outfile)
             print("cd '{}'".format(working_dir),file=outfile)
             
     @staticmethod
@@ -277,8 +278,6 @@ class splitter:
     @staticmethod
     def chunk_size(a, n):
         return (a[i:i+n] for i in range(0, len(a), n))
-
-
 
 
 #%% PARSE ###########
@@ -389,7 +388,6 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
     whoami = getpass.getuser()
     email = '{}@qut.edu.au'.format(whoami)
     logging.debug("Using email address: {}".format(email))
-
 
 
 #%% RUN CHUNKS ##############################
