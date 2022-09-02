@@ -155,15 +155,12 @@ class script_format:
         if args.scratch_data:
             for dir in args.scratch_data:
                 if os.path.exists(os.path.abspath(dir)):
-                    print("cp -r -L '{}' $TMPDIR/".format(os.path.abspath(dir)),file=outfile)
+                    print("cp -r -L '{}' '$TMPDIR'".format(os.path.abspath(dir)),file=outfile)
                 else:
                     raise Exception('{} not found. Exiting'.format(dir))
         if args.run_tmp_dir:
-            tmp_dir = binascii.b2a_hex(os.urandom(15)).decode()
-            user = os.getuid()
             print("\n#Change to scratch dir for processing",file=outfile)
-            print("mkdir -p '$TMPDIR/mqsub_processing_{}/{}'".format(user,tmp_dir),file=outfile)
-            print("cd '$TMPDIR/mqsub_processing_{}/{}'\n".format(user,tmp_dir),file=outfile)
+            print("cd '$TMPDIR'\n",file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
@@ -175,9 +172,11 @@ class script_format:
     def tail(outfile):
         if args.run_tmp_dir:
             working_dir = os.getcwd()
+            print("\nFINAL_EXITSTATUS=$?",file=outfile)
             print("\n#Move output from scratch",file=outfile)           
             print("mv * '{}'".format(working_dir),file=outfile)
-            print("cd '{}'".format(working_dir),file=outfile)
+            print("cd '{}'\n".format(working_dir),file=outfile)
+            print("exit $FINAL_EXITSTATUS",file=outfile)
             
     @staticmethod
     def report_running_host(jobinfo):
