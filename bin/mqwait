@@ -90,7 +90,7 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
 class PbsJobInfo:
     @staticmethod
     def current_jobs():
-        return run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'{print $1}\'').decode().splitlines()
+        return run('qstat -f -u woodcrob -a | tail -n +6 | column -t | awk \'$10 == \"R\"\' | awk \'{print $1}\'').decode().splitlines()
 
     @staticmethod
     def all_jobs():
