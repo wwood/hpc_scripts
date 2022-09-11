@@ -1,5 +1,4 @@
 #!/usr/bin/env python3.4
-#
 
 # Must be python3.4-compatible since that is what is on the lyra base
 
@@ -18,7 +17,6 @@ from argparse import RawTextHelpFormatter,SUPPRESS
 import logging
 import sys
 import os
-import binascii
 import tempfile
 import subprocess
 import getpass
@@ -156,14 +154,14 @@ class script_format:
         if args.scratch_data:
             for dir in args.scratch_data:
                 if os.path.exists(os.path.abspath(dir)):
-                    print("cp -r -L '{}' '$TMPDIR'".format(os.path.abspath(dir)),file=outfile)
+                    print("cp -r -L '{}' $TMPDIR".format(os.path.abspath(dir)),file=outfile)
                     print("CP_EXITSTATUS=$?",file=outfile)
                     print("if [[ $CP_EXITSTATUS -eq 0 ]]; then : ; else  echo 'Exit status $CP_EXITSTATUS. Exitted due to failed cp command'; exit $CP_EXITSTATUS ; fi",file=outfile)
                 else:
                     raise Exception('{} not found. Exiting'.format(dir))
         if args.run_tmp_dir:
             print("\n#Change to scratch dir for processing",file=outfile)
-            print("cd '$TMPDIR'\n",file=outfile)
+            print("cd $TMPDIR\n",file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
