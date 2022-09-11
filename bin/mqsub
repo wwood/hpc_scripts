@@ -26,6 +26,7 @@ from datetime import date
 import json
 import time
 from smtplib import SMTP
+import datetime
 
 ## Code below copied from the extern python package. Copy the code here so there are no dependencies.
 
@@ -126,7 +127,7 @@ class PbsJobInfo:
 
 class script_format:
     @staticmethod
-    def header(outfile, prelude=None):
+    def header(outfile, prelude=None, segregated_logs_dir=None):
         print('#!/bin/bash -l',file=outfile)
         print('#PBS -l ncpus={}'.format(args.cpus),file=outfile)
         print('#PBS -l ngpus={}'.format(args.gpu),file=outfile)        
@@ -138,6 +139,9 @@ class script_format:
         if args.directive:
             print('#PBS {}'.format(args.directive),file=outfile)
         print('#PBS -q {}'.format(args.queue),file=outfile)
+        if segregated_logs_dir:
+            print('#PBS -o {}'.format(segregated_logs_dir),file=outfile)
+            print('#PBS -e {}'.format(segregated_logs_dir),file=outfile)
         if args.command_file and (args.chunk_num or args.chunk_size):
             print('#PBS -N ' + command_name + str(chunkID) + '\n', file = outfile)
         else:
@@ -323,6 +327,7 @@ Example usage:
     parser.add_argument('--prelude', help='Code from this file will be run before each chunk')
     parser.add_argument('--scratch-data', dest='scratch_data', nargs='+', help='Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs.')
     parser.add_argument('--run-tmp-dir', dest='run_tmp_dir',action='store_true', help='Executes your command(s) on the local SSD ($TMPDIR/mqsub_processing) of a node. IMPORTANT: Use absolute paths for your input files, and a relative path for your output.')
+    parser.add_argument('--segregated-log-files', action='store_true', help='Put log files in ~/qsub_logs/<date>/<directory> instead of the current working directory. Currently only works with chunked inputs.')
     parser.add_argument('command',nargs='*',help='command to be run')
     parser.epilog = '''
 ----------------------------------------------------------------------------------------------------------
@@ -421,10 +426,25 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
             else:
                 print("Please specificy either --chunk_num or --chunk_size.")
 
+            segregated_logs_dir = None
+            if args.segregated_log_files:
+                # Get the number of directories in the qsub_logs directory, and add 1 to it
+                logs_dir1 = os.path.join(
+                    os.path.expanduser('~'),
+                    'qsub_logs',
+                    datetime.datetime.now().strftime("%Y-%m-%d"))
+                if os.path.exists(logs_dir1):
+                    num_logs_dirs = len(os.listdir(logs_dir1))
+                else:
+                    num_logs_dirs = 0
+                segregated_logs_dir = os.path.join(logs_dir1, command_name+'-'+str(num_logs_dirs + 1))
+                logging.info("Creating segregated log directory {}".format(segregated_logs_dir))
+                os.makedirs(segregated_logs_dir)
+
             for chunk in chunks:
                 with open(command_name + str(chunkID) +'.sh', 'w') as outfile:
                     chunk = "\n".join(s for s in chunk)
-                    script_format.header(outfile, prelude if args.prelude else None)
+                    script_format.header(outfile, prelude if args.prelude else None, segregated_logs_dir)
                     script_format.tail(outfile)
                 chunkID = chunkID + 1
 
