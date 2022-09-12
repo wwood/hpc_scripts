@@ -148,7 +148,10 @@ class script_format:
             print('#PBS -N {}'.format(jobname),file=outfile)
         print("cd '{}'".format(os.getcwd()), file=outfile) # cd to current directory
         # activate the conda environment from which this script was started
-        current_conda_env = os.environ['CONDA_PREFIX']
+        try:
+            current_conda_env = os.environ['CONDA_PREFIX']
+        except:
+            current_conda_env = str('/mnt/hpccs01/work/microbiome/conda/bin/conda')
         if current_conda_env:
 #            print('. /pkg/suse12/software/miniconda3/4.5.12/etc/profile.d/conda.sh',file=outfile)
 #            print('conda activate',file=outfile)
@@ -364,7 +367,10 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
     else:
         raise Exception("Must specify either --script-stdin, command, or a --command-file to chunk")
 
-    time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip().split(':')[0]
+    if os.path.exists('/pkg/hpc/scripts/time_until_outage.sh'):
+        time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip().split(':')[0]
+    else:
+        time_left = int(7890000) 
     if args.hours is not None:
         time_required = int(args.hours)
     if args.days is not None:
