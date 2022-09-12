@@ -1,0 +1,59 @@
+name: check hpc_script
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8"]
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Check mqsub --dry-run
+        run: |
+            python3 bin/mqsub --dry-run -- echo 'Hello world'
+      - name: Check mqstat
+        run: |
+            python3 bin/mqstat --help
+      - name: Check mqwait
+        run: |
+            python3 bin/mqwait --help
+      - name: Check mpermissions
+        run: |
+            python3 bin/mpermissions --help            
+      - name: Check mqcreate
+        run: |
+            python3 bin/mcreate --help
+      - name: Check filename_tree_splitter
+        run: |
+            python3 bin/filename_tree_splitter -n 5 --names HelloWorld
+#      - name: Check filename_tree_unsplitter
+#        run: |
+#            python3 bin/filename_tree_unsplitter            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                        
