@@ -90,7 +90,7 @@ class ExternCalledProcessError(subprocess.CalledProcessError):
 class PbsJobInfo:
     @staticmethod
     def current_jobs():
-        return run('qstat -f -u woodcrob -a | tail -n +6 | column -t | awk \'$10 == \"R\"\' | awk \'{print $1}\'').decode().splitlines()
+        return run('qstat -f -u `whoami` -a | tail -n +6 | column -t | awk \'$10 == \"R\"\' | awk \'{print $1}\'').decode().splitlines()
 
     @staticmethod
     def all_jobs():
@@ -133,7 +133,7 @@ if __name__ == '__main__':
                 print('None of your jobs appear to be running')
                 sys.exit(0)
             else:
-                print("Found {} job(s), in total.".format(len(current_jobs)))
+                print("Found {} job(s), in total.".format(len(all_jobs)))
 
             if args.m is True and args.i is None:
                 output = subprocess.getoutput("grep 'INFO: qsub stdout was:'").splitlines()
