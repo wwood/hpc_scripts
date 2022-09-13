@@ -129,6 +129,7 @@ if __name__ == '__main__':
     while True:
         try:
             current_jobs = PbsJobInfo.current_jobs()
+            all_jobs = PbsJobInfo.all_jobs()            
             if len(current_jobs) == 0:
                 print('None of your jobs appear to be running')
                 sys.exit(0)
