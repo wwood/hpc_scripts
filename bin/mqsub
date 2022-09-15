@@ -17,7 +17,6 @@ from argparse import RawTextHelpFormatter,SUPPRESS
 import logging
 import sys
 import os
-import binascii
 import tempfile
 import subprocess
 import getpass
@@ -147,13 +146,30 @@ class script_format:
             print('#PBS -N ' + command_name + str(chunkID) + '\n', file = outfile)
         else:
             print('#PBS -N {}'.format(jobname),file=outfile)
-        print("cd '{}'".format(os.getcwd()), file=outfile) # cd to current directory
-
-        #set a new $TMPDIR because Lyra sux
-        tmp_dir = binascii.b2a_hex(os.urandom(15)).decode()
-        user = os.getuid()
-        TMPDIR2 = '/data1/tmp/mqsub_processing/' + str(user) + '/' + str(tmp_dir) 
-        
+        print("cd '{}'".format(os.getcwd()), file=outfile) # cd to current directory      
+        if prelude:
+            print(prelude+'\n\n',file=outfile)
+        if args.scratch_data:
+            for dir in args.scratch_data:
+                if os.path.exists(os.path.abspath(dir)):
+                    print("\n#Copy scratch-data to TMPDIR for processing",file=outfile)
+                    print("export MSCRATCH=$TMPDIR",file=outfile)
+                    print("cp -r -L '{}' $MSCRATCH".format(os.path.abspath(dir)),file=outfile)
+                    print("CP_EXITSTATUS=$?",file=outfile)
+                    print("if [[ $CP_EXITSTATUS -eq 0 ]]; then : ; else  echo 'Exit status $CP_EXITSTATUS. Exitted due to failed cp command'; exit $CP_EXITSTATUS ; fi",file=outfile)
+                else:
+                    raise Exception('{} not found. Exiting'.format(dir))
+        if args.run_tmp_dir:
+            print("\n#Change to TMPDIR for processing",file=outfile)
+            print("export MQSUB_TMPDIR=$TMPDIR",file=outfile)
+            print("mkdir $MQSUB_TMPDIR/output",file=outfile)
+            print("cd $MQSUB_TMPDIR/output\n",file=outfile)
+        if args.command_file and (args.chunk_num or args.chunk_size):
+            print("\nNUM_FAILED=0\n", file=outfile)
+        if args.command_file and (args.chunk_num or args.chunk_size):
+            print(chunk, file=outfile)
+        if args.command_file and (args.chunk_num or args.chunk_size):
+            print("\necho \"Number of failed commands: $NUM_FAILED\"\n", file=outfile)
         #activate the conda environment from which this script was started
         try:
             current_conda_env = os.environ['CONDA_PREFIX']
@@ -162,31 +178,7 @@ class script_format:
         if current_conda_env:
 #            print('. /pkg/suse12/software/miniconda3/4.5.12/etc/profile.d/conda.sh',file=outfile)
 #            print('conda activate',file=outfile)
-            print("conda activate '{}'".format(current_conda_env),file=outfile)
-        if prelude:
-            print(prelude+'\n\n',file=outfile)
-        if args.scratch_data:
-            for dir in args.scratch_data:
-                if os.path.exists(os.path.abspath(dir)):
-                    print("\n#Copy --scratch-data to TMPDIR ({}) for processing".format(TMPDIR2),file=outfile)
-                    print("export TMPDIR={}".format(TMPDIR2),file=outfile)
-                    print("mkdir -p $TMPDIR",file=outfile)
-                    print("cp -r -L '{}' $TMPDIR".format(os.path.abspath(dir)),file=outfile)
-                    print("CP_EXITSTATUS=$?",file=outfile)
-                    print("if [[ $CP_EXITSTATUS -eq 0 ]]; then : ; else  echo 'Exit status $CP_EXITSTATUS. Exitted due to failed cp command'; exit $CP_EXITSTATUS ; fi",file=outfile)
-                else:
-                    raise Exception('{} not found. Exiting'.format(dir))
-        if args.run_tmp_dir:
-            print("\n#Change to TMPDIR ({}) for processing".format(TMPDIR2),file=outfile)
-            print("export TMPDIR={}".format(TMPDIR2),file=outfile)
-            print("mkdir -p $TMPDIR",file=outfile)
-            print("cd $TMPDIR\n",file=outfile)
-        if args.command_file and (args.chunk_num or args.chunk_size):
-            print("\nNUM_FAILED=0\n", file=outfile)
-        if args.command_file and (args.chunk_num or args.chunk_size):
-            print(chunk, file=outfile)
-        if args.command_file and (args.chunk_num or args.chunk_size):
-            print("\necho \"Number of failed commands: $NUM_FAILED\"\n", file=outfile)
+            print("conda activate '{}'".format(current_conda_env),file=outfile)            
 
     @staticmethod
     def tail(outfile):
@@ -194,9 +186,7 @@ class script_format:
             working_dir = os.getcwd()
             print("\nFINAL_EXITSTATUS=$?",file=outfile)
             print("\n#Move output from scratch",file=outfile)           
-            print("mv * '{}'".format(working_dir),file=outfile)
-            print("rm -rf $PWD",file=outfile)
-            print("cd '{}'".format(working_dir),file=outfile)
+            print("mv $MQSUB_TMPDIR/output/* '{}'".format(working_dir),file=outfile)
             print("exit $FINAL_EXITSTATUS",file=outfile)
             
     @staticmethod
