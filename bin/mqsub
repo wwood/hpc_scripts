@@ -161,9 +161,9 @@ class script_format:
                     raise Exception('{} not found. Exiting'.format(dir))
         if args.run_tmp_dir:
             print("\n#Change to TMPDIR for processing",file=outfile)
-            print("export MQSUB_TMPDIR=$TMPDIR",file=outfile)
-            print("mkdir $MQSUB_TMPDIR/output",file=outfile)
-            print("cd $MQSUB_TMPDIR/output\n",file=outfile)
+            print("export MQSUB_TMPDIR=$TMPDIR || exit 1",file=outfile)
+            print("mkdir $MQSUB_TMPDIR/output || exit 1",file=outfile)
+            print("cd $MQSUB_TMPDIR/output || exit 1\n",file=outfile)
         #activate the conda environment from which this script was started
         try:
             current_conda_env = os.environ['CONDA_PREFIX']
