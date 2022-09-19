@@ -187,7 +187,7 @@ class script_format:
             working_dir = os.getcwd()
             print("\nFINAL_EXITSTATUS=$?",file=outfile)
             print("\n#Move output from scratch",file=outfile)           
-            print("mv $MQSUB_TMPDIR/output/* '{}'".format(working_dir),file=outfile)
+            print("cp -r $MQSUB_TMPDIR/output/* '{}' || exit 1".format(working_dir),file=outfile)
             print("exit $FINAL_EXITSTATUS",file=outfile)
             
     @staticmethod
