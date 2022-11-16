@@ -208,7 +208,7 @@ if __name__ == '__main__':
             if j['queue']!='microbiome':    
                 job = {'PBS ID':jid,
                    'CPUs':int(j['Resource_List']['ncpus']),
-                   'RAM':int(j['Resource_List']['mem'].replace('gb','')),
+                   'RAM':int(j['Resource_List']['mem'].replace('gb','').replace('000mb','')),
                    'node':j['exec_host'].split('/')[0]
                    }
                 dicts.append(job)
