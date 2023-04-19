@@ -514,18 +514,21 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
                     exe_index = 0
 
                     # Deal with e.g. PATH=extra:$PATH ...
-                    while environment_setting.match(exe) != None:
-                        logging.info("Skipping command fragment {} as detected as being an environment setting".format(exe_index))
-                        if exe_index >= len(cmd):
-                            raise Exception("Failed to parse an executable from the command given")
-                        exe_index += 1
-                        exe = cmd[exe_index]
-                        jobname = exe
+                    if args.name:
+                        jobname = args.name
+                    else:
+                        while environment_setting.match(exe) != None:
+                            logging.info("Skipping command fragment {} as detected as being an environment setting".format(exe_index))
+                            if exe_index >= len(cmd):
+                                raise Exception("Failed to parse an executable from the command given")
+                            exe_index += 1
+                            exe = cmd[exe_index]
+                            jobname = exe
 
-                    logging.debug("Testing if executable {} is available in $PATH".format(exe))
-                    if shutil.which(exe) is None:
-                        raise Exception("The executable {} is not available, not continuing".format(exe))
-                    logging.debug("Executable {} was available, seems all good".format(exe))
+                        logging.debug("Testing if executable {} is available in $PATH".format(exe))
+                        if shutil.which(exe) is None:
+                            raise Exception("The executable {} is not available, not continuing".format(exe))
+                        logging.debug("Executable {} was available, seems all good".format(exe))
             else:
                 logging.debug("Not checking for executable availability as args.command not defined")
 
