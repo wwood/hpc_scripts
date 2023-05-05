@@ -387,7 +387,7 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
         sys.stderr.write('\n###################################################################\n\n')
 
     if args.mem is None:
-        mem = 8*args.cpus
+        mem = int(7.8125*args.cpus)
     else:
         mem = args.mem
     if mem < 8 and args.queue == 'lyra' and (args.scratch_data or args.run_tmp_dir):
