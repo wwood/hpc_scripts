@@ -23,3 +23,14 @@ PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND ; }"'echo $$ $USER \
 
 #Path to kingfisher # symlinked /lustre/work-lustre/microbiome/sw/kingfisher-download/bin/kingfisher in $CONDA_PREFIX/envs/kingfisher/bin instead
 #export PATH=/lustre/work-lustre/microbiome/sw/kingfisher-download/bin:$PATH
+
+#add RAM usage limits
+if [ `hostname` = "cl5n006" ] || [ `hostname` = "cl5n007" ] || [ `hostname` = "cl5n008" ] || [ `hostname` = "cl5n009" ]
+then
+    echo "** Setting 750GB RAM ulimit **"
+    ulimit -v $((750 * 1024 * 1024))
+elif [ `hostname` = "cl5n005" ]
+then
+    echo "** Setting 300GB RAM ulimit **"
+    ulimit -v $((350 * 1024 * 1024))
+fi
