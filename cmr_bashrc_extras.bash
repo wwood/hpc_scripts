@@ -27,10 +27,10 @@ PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND ; }"'echo $$ $USER \
 #add RAM usage limits
 if [ `hostname` = "cl5n006" ] || [ `hostname` = "cl5n007" ] || [ `hostname` = "cl5n008" ] || [ `hostname` = "cl5n009" ]
 then
-    echo "** Setting 750GB RAM ulimit **"
+    case $- in *i*) echo "** Setting 750GB RAM ulimit **"; esac
     ulimit -v $((750 * 1024 * 1024))
 elif [ `hostname` = "cl5n005" ]
 then
-    echo "** Setting 300GB RAM ulimit **"
+    case $- in *i*) echo "** Setting 300GB RAM ulimit **"; esac
     ulimit -v $((350 * 1024 * 1024))
 fi
