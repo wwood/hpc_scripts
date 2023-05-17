@@ -92,6 +92,32 @@ def strfdelta(tdelta, fmt):
     d["minutes"], d["seconds"] = divmod(rem, 60)
     return fmt.format(**d)
 
+class JobsCount:
+    def __init__(self):
+        self.num_running = 0
+        self.num_queued = 0
+        self.num_other = 0
+
+def get_non_microbiome_jobs():
+    all_my_jobs = run('qstat -u `whoami`').decode('latin-1').split('\n')[5:]
+    jc = JobsCount()
+    for row in all_my_jobs:
+        splits = list(row.split())
+        if len(splits) == 0:
+            continue
+        if len(splits) != 11:
+            raise Exception("Unexpected qstat output: %s" % row)
+        if 'microbi' in splits[2]:
+            continue
+        else:
+            if splits[9] == 'R':
+                jc.num_running += 1
+            elif splits[9] == 'Q':
+                jc.num_queued += 1
+            else:
+                jc.num_other += 1
+    return jc
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -270,6 +296,8 @@ if __name__ == '__main__':
         num_jobs_running = sum([1 for m in microbiome_jobs if m[1]['job_state']=='R'])
         num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']=='R'])
 
+        non_microbiome_jobs = get_non_microbiome_jobs()
+
         print("Microbiome group jobs running: {} / {} ({:.2f}%)".format(num_jobs_running, num_jobs, num_jobs_running/num_jobs*100))
         print("Microbiome group CPUs utilized: {} / {} ({:.2f}%)".format(num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
         print("Microbiome group CPUs queued: {}".format(num_cpus_not_running))
@@ -289,6 +317,13 @@ if __name__ == '__main__':
         print("{} jobs running: {} / {} ({:.1f}%)".format(user, num_jobs_running, num_jobs, num_jobs_running/num_jobs*100 if num_jobs > 0 else 0))
         print("{} CPUs running: {} / {} ({:.1f}%)".format(user, num_cpus_running, total_cpus, num_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
         print("{} CPUs queued: {}".format(user, num_cpus_not_running))
+        print("{} lyra queue jobs running: {} / {} ({:.1f}%)".format(
+            user,
+            non_microbiome_jobs.num_running,
+            non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other,
+            non_microbiome_jobs.num_running/(non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other)*100 if (non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other) > 0 else 0))
+        if non_microbiome_jobs.num_other > 0:
+            print("NOTE: {} non-microbiome jobs of {} were neither running nor queued".format(non_microbiome_jobs.num_other, user))
 
         my_comments = {}
         for m in my_jobs:
@@ -311,8 +346,9 @@ if __name__ == '__main__':
             if server_regex.sub('',m[1]['exec_host']) in queue_nodes:
                 non_microbiome_jobs_on_our_nodes.append(m)
         num_non_microbiome_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in non_microbiome_jobs_on_our_nodes])
-        print("Non-microbiome group jobs / CPU: {} / {} ({:.1f}%)".format(
-            len(non_microbiome_jobs_on_our_nodes),
-            num_non_microbiome_cpus_running,
-            num_non_microbiome_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
+        if num_non_microbiome_cpus_running > 0:
+            print("NOTE: Non-microbiome group jobs / CPU: {} / {} ({:.1f}%)".format(
+                len(non_microbiome_jobs_on_our_nodes),
+                num_non_microbiome_cpus_running,
+                num_non_microbiome_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
 
