@@ -34,3 +34,13 @@ then
     case $- in *i*) echo "** Setting 300GB RAM ulimit **"; esac
     ulimit -v $((350 * 1024 * 1024))
 fi
+
+#notify about disk usage
+echo '** cl5n005 disk usage (%): ' `cat /work/microbiome/cl5n005_disk_usage` ' **'
+echo '** cl5n006 disk usage (%): ' `cat /work/microbiome/cl5n006_disk_usage` ' **'
+echo '** cl5n007 disk usage (%): ' `cat /work/microbiome/cl5n007_disk_usage` ' **'
+echo '** cl5n008 disk usage (%): ' `cat /work/microbiome/cl5n008_disk_usage` ' **'
+echo '** cl5n009 disk usage (%): ' `cat /work/microbiome/cl5n009_disk_usage` ' **'
+
+
+

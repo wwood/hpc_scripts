@@ -1,0 +1,6 @@
+#!/bin/bash
+ssh cl5n005 "( df | grep '/data1' | awk -F '[[:space:]]+' '{print \$5}' | sed 's/%//' ) > /work/microbiome/cl5n005_disk_usage"
+ssh cl5n006 "( df | grep '/data1' | awk -F '[[:space:]]+' '{print \$5}' | sed 's/%//' ) > /work/microbiome/cl5n006_disk_usage"
+ssh cl5n007 "( df | grep '/data1' | awk -F '[[:space:]]+' '{print \$5}' | sed 's/%//' ) > /work/microbiome/cl5n007_disk_usage"
+ssh cl5n008 "( df | grep '/data1' | awk -F '[[:space:]]+' '{print \$5}' | sed 's/%//' ) > /work/microbiome/cl5n008_disk_usage"
+ssh cl5n009 "( df | grep '/data1' | awk -F '[[:space:]]+' '{print \$5}' | sed 's/%//' ) > /work/microbiome/cl5n009_disk_usage"
