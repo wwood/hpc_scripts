@@ -41,6 +41,3 @@ case $- in *i*) echo "** cl5n006 disk usage (%): `cat /work/microbiome/cl5n006_d
 case $- in *i*) echo "** cl5n007 disk usage (%): `cat /work/microbiome/cl5n007_disk_usage` **"; esac
 case $- in *i*) echo "** cl5n008 disk usage (%): `cat /work/microbiome/cl5n008_disk_usage` **"; esac
 case $- in *i*) echo "** cl5n009 disk usage (%): `cat /work/microbiome/cl5n009_disk_usage` **"; esac
-
-
-exit
