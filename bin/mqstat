@@ -138,9 +138,13 @@ if __name__ == '__main__':
     logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
     try:    
-        overall_json = json.loads(run('qstat -f -F json microbiome').decode('latin-1'))['Jobs']
+        overall_json = json.loads(run('qstat -f -F json microbiome').decode('latin-1'))
     except:
-        print('Malformed qstat JSON detected. Unable to parse output')
+        raise Exception('Malformed qstat JSON detected. Unable to parse output')
+    if 'Jobs' in overall_json:
+        overall_json = overall_json['Jobs']
+    else:
+        overall_json = {}
     microbiome_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']=='microbiome'])
     queue_nodes = ['cl5n010','cl5n011','cl5n012','cl5n013']
     other_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['job_state'] =='R' and j['exec_host'].split('/')[0] in queue_nodes])
@@ -298,7 +302,11 @@ if __name__ == '__main__':
 
         non_microbiome_jobs = get_non_microbiome_jobs()
 
-        print("Microbiome group jobs running: {} / {} ({:.2f}%)".format(num_jobs_running, num_jobs, num_jobs_running/num_jobs*100))
+        if num_jobs > 0:
+            frac_jobs_running = num_jobs_running/num_jobs
+        else:
+            frac_jobs_running = 0
+        print("Microbiome group jobs running: {} / {} ({:.2f}%)".format(num_jobs_running, num_jobs, frac_jobs_running*100))
         print("Microbiome group CPUs utilized: {} / {} ({:.2f}%)".format(num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
         print("Microbiome group CPUs queued: {}".format(num_cpus_not_running))
 
