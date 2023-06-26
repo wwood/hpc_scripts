@@ -224,7 +224,13 @@ class script_format:
                     if last_status == 'F':
                         break
 
-                    current_job_info = PbsJobInfo.json(job_id)
+                    try:
+                        current_job_info = PbsJobInfo.json(job_id)
+                    except:
+                        print('Server issues may be occuring. Sleeping for 2 min...')
+                        time.sleep(120)
+                        continue
+
                     current_job_status = current_job_info['job_state']
                     if current_job_status != last_status:
                         logging.debug("last was '{}', current was '{}'".format(last_status, current_job_status))
