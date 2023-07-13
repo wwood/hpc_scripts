@@ -1,0 +1,9 @@
+rule sleep:
+    output:
+        done = "snakemake_qsub.done"
+    threads: 2
+    resources:
+        mem = "3GB",
+        runtime = "120m",
+    shell:
+        "sleep 60 && touch {output.done}"
