@@ -74,7 +74,7 @@ if __name__ == '__main__':
     mem_gb = int(mem_mb / 1000)
 
     if 'runtime' in job_properties['resources']:
-        runtime_mins = job_properties['resources']['runtime']
+        runtime_mins = job_properties['resources']['runtime'] # Fails with snakemake == 7.16.0, but works with 7.30.1
         runtime_hours = "--hours {}".format(int(runtime_mins / 60))
     else:
         runtime_hours = ''
@@ -85,11 +85,8 @@ if __name__ == '__main__':
     else:
         queue = ''
 
-    # shutil.copyfile(jobscript, "/tmp/benjob.sh")
     mqsub_stdout = run("mqsub --seg --no-email --quiet --bg -t {threads} -m {mem} {hours} --script {script} {queue} 2>&1".format(
         threads=threads, script=jobscript, mem=mem_gb, hours=runtime_hours, queue=queue))
-    with open("/tmp/benout", 'w') as f:
-        f.write(mqsub_stdout.decode())
     
     # Print the pbs ID as expected by snakemake
     correct_line = [line for line in mqsub_stdout.decode().split('\n') if line.startswith('qsub stdout: ')]
