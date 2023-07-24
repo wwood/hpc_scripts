@@ -97,6 +97,10 @@ class JobsCount:
         self.num_running = 0
         self.num_queued = 0
         self.num_other = 0
+        self.num_running_cpus = 0
+        self.num_total_cpus = 0
+        self.ram_running = 0
+        self.ram_total = 0
 
 def get_non_microbiome_jobs():
     all_my_jobs = run('qstat -u `whoami`').decode('latin-1').split('\n')[5:]
@@ -110,8 +114,14 @@ def get_non_microbiome_jobs():
         if 'microbi' in splits[2]:
             continue
         else:
+            cpus = int(splits[6])
+            ram = int(splits[7].replace('gb',''))
+            jc.num_total_cpus += cpus
+            jc.ram_total += ram
             if splits[9] == 'R':
                 jc.num_running += 1
+                jc.num_running_cpus += cpus
+                jc.ram_running += ram
             elif splits[9] == 'Q':
                 jc.num_queued += 1
             else:
@@ -330,6 +340,16 @@ if __name__ == '__main__':
             non_microbiome_jobs.num_running,
             non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other,
             non_microbiome_jobs.num_running/(non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other)*100 if (non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other) > 0 else 0))
+        print("{} lyra queue CPUs running: {} / {} ({:.1f}%)".format(
+            user,
+            non_microbiome_jobs.num_running_cpus,
+            non_microbiome_jobs.num_total_cpus,
+            non_microbiome_jobs.num_running_cpus/non_microbiome_jobs.num_total_cpus*100 if non_microbiome_jobs.num_total_cpus > 0 else 0))
+        print("{} lyra queue RAM running: {} / {} GB ({:.1f}%)".format(
+            user,
+            non_microbiome_jobs.ram_running,
+            non_microbiome_jobs.ram_total,
+            non_microbiome_jobs.ram_running/non_microbiome_jobs.ram_total*100 if non_microbiome_jobs.ram_total > 0 else 0))
         if non_microbiome_jobs.num_other > 0:
             print("NOTE: {} non-microbiome jobs of {} were neither running nor queued".format(non_microbiome_jobs.num_other, user))
 
