@@ -296,6 +296,23 @@ class splitter:
     def chunk_size(a, n):
         return (a[i:i+n] for i in range(0, len(a), n))
 
+def setup_segregated_logs_directory(command_name):
+    # Get the number of directories in the qsub_logs directory, and add 1 to it
+    logs_dir1 = os.path.join(
+        os.path.expanduser('~'),
+        'qsub_logs',
+        datetime.datetime.now().strftime("%Y-%m-%d"))
+    if os.path.exists(logs_dir1):
+        num_logs_dirs = len(os.listdir(logs_dir1))
+    else:
+        num_logs_dirs = 0
+    segregated_logs_dir = os.path.join(logs_dir1, command_name+'-'+str(num_logs_dirs + 1))
+    logging.info("Creating segregated log directory {}".format(segregated_logs_dir))
+    os.makedirs(segregated_logs_dir)
+    
+    return segregated_logs_dir
+
+
 
 #%% PARSE ###########
 ####################
@@ -463,18 +480,7 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
 
             segregated_logs_dir = None
             if args.segregated_log_files:
-                # Get the number of directories in the qsub_logs directory, and add 1 to it
-                logs_dir1 = os.path.join(
-                    os.path.expanduser('~'),
-                    'qsub_logs',
-                    datetime.datetime.now().strftime("%Y-%m-%d"))
-                if os.path.exists(logs_dir1):
-                    num_logs_dirs = len(os.listdir(logs_dir1))
-                else:
-                    num_logs_dirs = 0
-                segregated_logs_dir = os.path.join(logs_dir1, command_name+'-'+str(num_logs_dirs + 1))
-                logging.info("Creating segregated log directory {}".format(segregated_logs_dir))
-                os.makedirs(segregated_logs_dir)
+                segregated_logs_dir = setup_segregated_logs_directory(command_name)
 
             for chunk in chunks:
                 with open(command_name + str(chunkID) +'.sh', 'w') as outfile:
@@ -538,7 +544,13 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
             else:
                 logging.debug("Not checking for executable availability as args.command not defined")
 
-            script_format.header(tf)
+            segregated_logs_dir = None
+            if args.segregated_log_files:
+                segregated_logs_dir = setup_segregated_logs_directory(jobname)
+
+            script_format.header(
+                tf,
+                segregated_logs_dir=segregated_logs_dir)
 
             if content_type == COMMAND:
                 print(' '.join(cmd),file=tf)
