@@ -6,4 +6,4 @@ rule sleep:
         mem = "3GB",
         runtime = "120m",
     shell:
-        "sleep 60 && touch {output.done}"
+        "sleep 3 && touch {output.done}"

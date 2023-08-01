@@ -100,12 +100,16 @@ class PbsJobInfo:
         return json_result['job_state']
 
     @staticmethod
-    def stdout_and_stderr_paths(job_id):
+    def stdout_and_stderr_paths(job_id, segregated_logs_dir=None):
         json_result = PbsJobInfo.json(job_id)
         reg = re.compile("^.*?:(.*)$")
         out1 = json_result['Output_Path']
         err1 = json_result['Error_Path']
-        return reg.match(out1).group(1), reg.match(err1).group(1)
+        out2, err2 = reg.match(out1).group(1), reg.match(err1).group(1)
+        if segregated_logs_dir:
+            return os.path.join(out2, '%s.OU' % job_id), os.path.join(err2, '%s.ER' % job_id)
+        else:
+            return out2, err2 
 
     @staticmethod
     def job_status_english(state):
@@ -254,7 +258,7 @@ class script_format:
                 logging.info("resources_used.cput: {}".format(r['cput']))
                 logging.info("resources_used.vmem: {}".format(r['vmem']))
 
-                stdout_path, stderr_path = PbsJobInfo.stdout_and_stderr_paths(job_id)
+                stdout_path, stderr_path = PbsJobInfo.stdout_and_stderr_paths(job_id, segregated_logs_dir=segregated_logs_dir)
                 with open(stdout_path,'r') as f: # Possible this might fail if the stdout is binary?
                     shutil.copyfileobj(f, sys.stdout)
                 with open(stderr_path,'r') as f:
@@ -280,8 +284,9 @@ class script_format:
                     with SMTP(host='localhost',port=0) as smtp:
                         smtp.sendmail('CMR_HPC',email,'Subject: {}\n\n{}'.format(subject,msg))
 
-                os.remove(stdout_path)
-                os.remove(stderr_path)
+                if segregated_logs_dir is None: # Don't remove when we've filed the outputs away already
+                    os.remove(stdout_path)
+                    os.remove(stderr_path)
                 sys.exit(exit_status)
             else:
                 print("qsub stdout: {}".format(qsub_stdout), file=sys.stderr)
@@ -295,6 +300,23 @@ class splitter:
     @staticmethod
     def chunk_size(a, n):
         return (a[i:i+n] for i in range(0, len(a), n))
+
+def setup_segregated_logs_directory(command_name):
+    # Get the number of directories in the qsub_logs directory, and add 1 to it
+    logs_dir1 = os.path.join(
+        os.path.expanduser('~'),
+        'qsub_logs',
+        datetime.datetime.now().strftime("%Y-%m-%d"))
+    if os.path.exists(logs_dir1):
+        num_logs_dirs = len(os.listdir(logs_dir1))
+    else:
+        num_logs_dirs = 0
+    segregated_logs_dir = os.path.join(logs_dir1, command_name+'-'+str(num_logs_dirs + 1))
+    logging.info("Creating segregated log directory {}".format(segregated_logs_dir))
+    os.makedirs(segregated_logs_dir)
+    
+    return segregated_logs_dir
+
 
 
 #%% PARSE ###########
@@ -340,7 +362,7 @@ Example usage:
     parser.add_argument('--prelude', help='Code from this file will be run before each chunk')
     parser.add_argument('--scratch-data', dest='scratch_data', nargs='+', help='Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs.')
     parser.add_argument('--run-tmp-dir', dest='run_tmp_dir',action='store_true', help='Executes your command(s) on the local SSD ($TMPDIR/mqsub_processing) of a node. IMPORTANT: Use absolute paths for your input files, and a relative path for your output.')
-    parser.add_argument('--segregated-log-files', action='store_true', help='Put log files in ~/qsub_logs/<date>/<directory> instead of the current working directory. Currently only works with chunked inputs.')
+    parser.add_argument('--segregated-log-files', action='store_true', help='Put log files in ~/qsub_logs/<date>/<directory> instead of the current working directory.')
     parser.add_argument('command',nargs='*',help='command to be run')
     parser.epilog = '''
 ----------------------------------------------------------------------------------------------------------
@@ -463,18 +485,7 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
 
             segregated_logs_dir = None
             if args.segregated_log_files:
-                # Get the number of directories in the qsub_logs directory, and add 1 to it
-                logs_dir1 = os.path.join(
-                    os.path.expanduser('~'),
-                    'qsub_logs',
-                    datetime.datetime.now().strftime("%Y-%m-%d"))
-                if os.path.exists(logs_dir1):
-                    num_logs_dirs = len(os.listdir(logs_dir1))
-                else:
-                    num_logs_dirs = 0
-                segregated_logs_dir = os.path.join(logs_dir1, command_name+'-'+str(num_logs_dirs + 1))
-                logging.info("Creating segregated log directory {}".format(segregated_logs_dir))
-                os.makedirs(segregated_logs_dir)
+                segregated_logs_dir = setup_segregated_logs_directory(command_name)
 
             for chunk in chunks:
                 with open(command_name + str(chunkID) +'.sh', 'w') as outfile:
@@ -538,7 +549,13 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
             else:
                 logging.debug("Not checking for executable availability as args.command not defined")
 
-            script_format.header(tf)
+            segregated_logs_dir = None
+            if args.segregated_log_files:
+                segregated_logs_dir = setup_segregated_logs_directory(jobname)
+
+            script_format.header(
+                tf,
+                segregated_logs_dir=segregated_logs_dir)
 
             if content_type == COMMAND:
                 print(' '.join(cmd),file=tf)
