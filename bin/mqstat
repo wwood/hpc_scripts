@@ -380,3 +380,33 @@ if __name__ == '__main__':
                 num_non_microbiome_cpus_running,
                 num_non_microbiome_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
 
+        # Get an overall state of the cluster
+        pbsnodeinfo = run('pbsnodeinfo').decode()
+        # Node    :   cputype |        cpuarch ;    cpu usage;    mem usage; gputype; gpu usage
+        # =====================================================================================
+        # cl4n001 : E7-8890v4 |       avx,avx2 ;  6 / 192 cpus; 500 / 5794 GB
+        # cl4n002 :      6140 |avx,avx2,avx512 ;  8 / 36 cpus;  32 / 186 GB;  P100; 1 / 4 gpus
+        # cl4n003 :      6140 |avx,avx2,avx512 ;  0 / 36 cpus;   0 / 186 GB;  P100; 0 / 4 gpus
+        # cl4n007 :      6140 |avx,avx2,avx512 ; 35 / 36 cpus; 324 / 376 GB   
+        line_re = re.compile(r'^(cl\d)\S+ *: *.*?; *(\d+) / (\d+) cpus')
+        cpu_usage = {}
+        for line in pbsnodeinfo.split('\n'):
+            if line.startswith('Node') or line.startswith('===') or line.strip() == '':
+                continue
+            matches = line_re.match(line)
+            if matches:
+                node_group = matches.group(1)
+                num_cpus_used = int(matches.group(2))
+                num_cpus = int(matches.group(3))
+                if node_group not in cpu_usage:
+                    cpu_usage[node_group] = {'used': 0, 'total': 0}
+                cpu_usage[node_group]['used'] += num_cpus_used
+                cpu_usage[node_group]['total'] += num_cpus
+            else:
+                print("WARNING: Could not parse pbsnodeinfo line: {}".format(line))
+        for node_group in sorted(cpu_usage.keys()):
+            print("Node group {}: {} / {} CPUs ({:.1f}%)".format(
+                node_group,
+                cpu_usage[node_group]['used'],
+                cpu_usage[node_group]['total'],
+                cpu_usage[node_group]['used']/cpu_usage[node_group]['total']*100 if cpu_usage[node_group]['total'] > 0 else 0))
