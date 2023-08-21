@@ -1,0 +1,6 @@
+cluster: snakemake_mqsub --segregated-log-files --queue lyra
+cluster-status: snakemake_mqstat
+jobs: 10000
+cluster-cancel: qdel
+use-conda: true
+conda-frontend: mamba

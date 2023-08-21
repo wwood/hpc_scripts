@@ -69,6 +69,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--queue', help='Queue to submit to [default = mqsub default]')
     parser.add_argument('--segregated-log-files', action='store_true', help='Put log files in ~/qsub_logs/<date>/<directory> instead of the current working directory.')
+    # --dry-run
+    parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('jobscript', help='Script to submit')
 
     args = parser.parse_args()
@@ -111,11 +113,16 @@ if __name__ == '__main__':
         job_name=job_name, extra_mqsub_args=extra_mqsub_args,
         threads=threads, script=jobscript, mem=mem_gb, hours=runtime_hours, queue=queue, 
         segregated_log_files_arg=segregated_log_files_arg)
-    mqsub_stdout = run(cmd)
-    
-    # Print the pbs ID as expected by snakemake
-    correct_line = [line for line in mqsub_stdout.decode().split('\n') if line.startswith('qsub stdout: ')]
-    if len(correct_line) != 1:
-        raise ValueError("mqsub returned unexpected output: {}".format(mqsub_stdout.decode()))
+
+    if args.dry_run:
+        print(cmd)
+        sys.exit(1) # exit 1 so that if this is through an actual snakemake run it quits immediately
     else:
-        print(correct_line[0].strip().replace('qsub stdout: ',''))
+        mqsub_stdout = run(cmd)
+        
+        # Print the pbs ID as expected by snakemake
+        correct_line = [line for line in mqsub_stdout.decode().split('\n') if line.startswith('qsub stdout: ')]
+        if len(correct_line) != 1:
+            raise ValueError("mqsub returned unexpected output: {}".format(mqsub_stdout.decode()))
+        else:
+            print(correct_line[0].strip().replace('qsub stdout: ',''))

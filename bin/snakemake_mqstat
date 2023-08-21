@@ -2,6 +2,7 @@
 import os
 import sys
 import subprocess
+import time
 
 ## Code below copied from the extern python package. Copy the code here so there are no dependencies.
 
@@ -65,7 +66,26 @@ if __name__ == '__main__':
 
     jobid = sys.argv[1]
 
-    output = run("qstat -x -f %s" % jobid).decode()
+    num_retry = 0
+    error = None
+    while True:
+        if num_retry < 10:
+            try:
+                output = run("qstat -x -f %s" % jobid).decode()
+                break
+            except ExternCalledProcessError as e:
+                # Sometimes get transient errors like:
+
+                # ExternCalledProcessError: Command qstat -x -f 5030967.pbs returned non-zero exit status 255.
+                # STDERR was: Communication failure.
+                # qstat: cannot connect to server pbs-primary (errno=15031)
+
+                # sleep for 10 seconds and try again
+                time.sleep(10)
+                num_retry += 1
+                error = e
+        else:
+            raise Exception("Failed to get job status after 10 retries, last error was:\n%s" % error)
 
     states = {}
     states['B'] = 'running' #'Array job has at least one subjob running'
@@ -82,9 +102,17 @@ if __name__ == '__main__':
     states['X'] = 'success' #'Subjob has completed execution or has been deleted'
 
     job_state_line = None
+    exit_status = None
     for line in output.split('\n'):
         if line.startswith('    job_state ='):
             job_state_line = line.replace('    job_state =','').strip()
-            break
+        elif line.startswith('    Exit_status = '):
+            exit_status = int(line.replace('    Exit_status = ','').strip())
     status = states[job_state_line]
-    print(status)
+    if job_state_line == 'F':
+        if exit_status != 0:
+            print('failed')
+        else:
+            print('success')
+    else:
+        print(status)
