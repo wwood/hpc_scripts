@@ -172,7 +172,7 @@ class script_format:
         try:
             current_conda_env = os.environ['CONDA_PREFIX']
         except:
-            pass
+            current_conda_env = None
         if current_conda_env:
             print("conda activate '{}'".format(current_conda_env),file=outfile)  
         if args.command_file and (args.chunk_num or args.chunk_size):
