@@ -172,10 +172,8 @@ class script_format:
         try:
             current_conda_env = os.environ['CONDA_PREFIX']
         except:
-            current_conda_env = str('/mnt/hpccs01/work/microbiome/conda/bin/conda')
+            pass
         if current_conda_env:
-#            print('. /pkg/suse12/software/miniconda3/4.5.12/etc/profile.d/conda.sh',file=outfile)
-#            print('conda activate',file=outfile)
             print("conda activate '{}'".format(current_conda_env),file=outfile)  
         if args.command_file and (args.chunk_num or args.chunk_size):
             print("\nNUM_FAILED=0\n", file=outfile)
