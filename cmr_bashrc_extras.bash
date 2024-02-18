@@ -49,4 +49,4 @@ case $- in *i*) echo "** cl5n013 disk usage (%): `cat /work/microbiome/cl5n013_d
 
 # Setup snakemake config directories so it interfaces well with the PBS system
 mkdir -p ~/.config/snakemake
-cd ~/.config/snakemake && ln -sf /work/microbiome/sw/hpc_scripts/snakemake_configs/* . && cd ~
+cd ~/.config/snakemake && ln -sf /work/microbiome/sw/hpc_scripts/snakemake_configs/* . && cd $OLDPWD
