@@ -22,7 +22,8 @@ PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND ; }"'echo $$ $USER \
                "$(history 1)" >> ~/.bash_eternal_history'
 
 #Path to kingfisher # symlinked /lustre/work-lustre/microbiome/sw/kingfisher-download/bin/kingfisher in $CONDA_PREFIX/envs/kingfisher/bin instead
-#export PATH=/lustre/work-lustre/microbiome/sw/kingfisher-download/bin:$PATH
+export PATH=/work/microbiome/sw/kingfisher_repos/kingfisher-v0.4.1/kingfisher-download/bin:$PATH
+export PATH=/work/microbiome/sw/recurm_repos/recurm/bin:$PATH
 
 #add RAM usage limits
 if [ `hostname` = "cl5n006" ] || [ `hostname` = "cl5n007" ] || [ `hostname` = "cl5n008" ] || [ `hostname` = "cl5n009" ]
