@@ -22,7 +22,8 @@ PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND ; }"'echo $$ $USER \
                "$(history 1)" >> ~/.bash_eternal_history'
 
 #Path to kingfisher # symlinked /lustre/work-lustre/microbiome/sw/kingfisher-download/bin/kingfisher in $CONDA_PREFIX/envs/kingfisher/bin instead
-#export PATH=/lustre/work-lustre/microbiome/sw/kingfisher-download/bin:$PATH
+export PATH=/work/microbiome/sw/kingfisher_repos/kingfisher-v0.4.1/kingfisher-download/bin:$PATH
+export PATH=/work/microbiome/sw/recurm_repos/recurm/bin:$PATH
 
 #add RAM usage limits
 if [ `hostname` = "cl5n006" ] || [ `hostname` = "cl5n007" ] || [ `hostname` = "cl5n008" ] || [ `hostname` = "cl5n009" ]
@@ -41,7 +42,12 @@ case $- in *i*) echo "** cl5n006 disk usage (%): `cat /work/microbiome/cl5n006_d
 case $- in *i*) echo "** cl5n007 disk usage (%): `cat /work/microbiome/cl5n007_disk_usage` **"; esac
 case $- in *i*) echo "** cl5n008 disk usage (%): `cat /work/microbiome/cl5n008_disk_usage` **"; esac
 case $- in *i*) echo "** cl5n009 disk usage (%): `cat /work/microbiome/cl5n009_disk_usage` **"; esac
+case $- in *i*) echo "** cl5n010 disk usage (%): `cat /work/microbiome/cl5n010_disk_usage` **"; esac
+case $- in *i*) echo "** cl5n011 disk usage (%): `cat /work/microbiome/cl5n011_disk_usage` **"; esac
+case $- in *i*) echo "** cl5n012 disk usage (%): `cat /work/microbiome/cl5n012_disk_usage` **"; esac
+case $- in *i*) echo "** cl5n013 disk usage (%): `cat /work/microbiome/cl5n013_disk_usage` **"; esac
+
 
 # Setup snakemake config directories so it interfaces well with the PBS system
 mkdir -p ~/.config/snakemake
-cd ~/.config/snakemake && ln -sf /work/microbiome/sw/hpc_scripts/snakemake_configs/* . && cd ~
+cd ~/.config/snakemake && ln -sf /work/microbiome/sw/hpc_scripts/snakemake_configs/* . && cd $OLDPWD
