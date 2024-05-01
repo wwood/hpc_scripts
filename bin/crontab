@@ -1,2 +1,1 @@
 */10 * * * * bash /work/microbiome/sw/hpc_scripts/bin/check_disk >/dev/null 2>&1
-* 1 * * * rsync --recursive /work/microbiome/biobank/assembled_genomes/biobank_isolate_genomes /work/microbiome/biobank_genomes >/dev/null 2>&1
