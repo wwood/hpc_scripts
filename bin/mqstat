@@ -281,19 +281,19 @@ if __name__ == '__main__':
        
         node_table=[]      
         node_summary = {'node':str('cl5n010'),
-                'CPU': str(128-cl5n010_cpu) + str(' threads'),
+                'CPU': str(124-cl5n010_cpu) + str(' threads'),
                 'RAM':str(1006-cl5n010_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n011'),
-                'CPU': str(128-cl5n011_cpu) + str(' threads'),
+                'CPU': str(124-cl5n011_cpu) + str(' threads'),
                 'RAM':str(1006-cl5n011_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n012'),
-                'CPU': str(128-cl5n012_cpu) + str(' threads'),
+                'CPU': str(124-cl5n012_cpu) + str(' threads'),
                 'RAM':str(1006-cl5n012_ram) + str(' GB')}
         node_table.append(node_summary)
         node_summary = {'node':str('cl5n013'),
-                'CPU': str(128-cl5n013_cpu) + str(' threads'),
+                'CPU': str(124-cl5n013_cpu) + str(' threads'),
                 'RAM':str(1006-cl5n013_ram) + str(' GB')}
         node_table.append(node_summary)
         
@@ -305,7 +305,7 @@ if __name__ == '__main__':
         num_jobs = len(microbiome_jobs)
         num_cpus_not_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']!='R'])
 
-        total_cpus = 128*len(queue_nodes)
+        total_cpus = 124*len(queue_nodes)
 
         num_jobs_running = sum([1 for m in microbiome_jobs if m[1]['job_state']=='R'])
         num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']=='R'])
