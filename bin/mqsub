@@ -430,11 +430,11 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
         hours = args.hours
 
     if args.mem is not None and args.cpus is not None:
-        if args.mem > 250 and args.cpus/128 != args.mem/1000 :
+        if args.mem > 250 and args.cpus/124 != args.mem/1000 :
             sys.stderr.write('\n#######################################################################################################')
             sys.stderr.write('\nWARNING: The number of CPUs is not scaled to the amount of RAM')
-            sys.stderr.write('\nGiven each node has 128 CPUs and ~1000 GB RAM, some properly scaled examples are:')
-            sys.stderr.write('\n32 CPU + 250 RAM | 64 CPU + 500 RAM | 96 CPU and 750 RAM')
+            sys.stderr.write('\nGiven each node has 124 CPUs and ~1000 GB RAM, some properly scaled examples are:')
+            sys.stderr.write('\n31 CPU + 250 RAM | 62 CPU + 500 RAM | 93 CPU and 750 RAM')
             sys.stderr.write('\ni.e. 25% of the CPUs should typically be matched with 25% of the RAM, on so on')
             sys.stderr.write('\nThis helps ensure that resources are fully utilised when all the CPU or RAM of a node has been reserved')
             sys.stderr.write('\n#######################################################################################################\n\n')
