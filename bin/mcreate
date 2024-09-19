@@ -5,7 +5,7 @@
 # Script to more easily submit jobs to the QUT HPC queuing system
 
 __author__ = "Peter Sternes"
-__copyright__ = "Copyright 2021"
+__copyright__ = "Copyright 2024"
 __credits__ = ["Peter Sternes"]
 __license__ = "GPL3"
 __maintainer__ = "Peter Sternes"
@@ -81,6 +81,7 @@ if __name__ == '__main__':
     parser.add_argument('package',help='package to be installed')
     parser.add_argument('-c', help='Use conda instead of the default mamba to install', action='store_true', default=False, dest='c')
     parser.add_argument('-v', help='Display latest version of package without installing', action='store_true', default=False, dest='v')
+    parser.add_argument('--prefix', help='Set the conda prefix something other than the currently active env', default=False, dest='prefix')
     args = parser.parse_args()
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -103,20 +104,33 @@ if __name__ == '__main__':
         conda_env_path = run("conda config --show envs_dirs | sed -n 2p | sed 's/  - //;s/$/\//'").decode().rstrip()            
         version = str(run(("{} search {} | awk '{{print $2}}' | tail -n1").format(installer, package)).decode()).rstrip()
         environment_name = package + '-v' + version
-        package_env_path = os.path.join(conda_env_path + environment_name)
         
-        if os.path.exists(package_env_path):
+        if os.path.exists(os.path.join(conda_env_path + environment_name)):
+            package_env_path = os.path.join(conda_env_path + environment_name)
             print('A current version of this package is already installed. Exiting...')
             print('Installation location: ' + package_env_path)
             exit()
-        else:
+        elif args.prefix:
+            prefix = args.prefix
+            package_env_path = os.path.join(prefix + environment_name)
             print('Installer: ' + installer)
             print('Package: ' + package)
             print('Checking for latest version...')   
             print('Latest version: ' + version)
             print('Creating a new environment entitled ' + environment_name + ' using ' + installer + '...')
             print('Installation location: ' + package_env_path)
-            run(("{} create -y -n {} {}={}").format(installer, environment_name, package, version))
+            run(("{} create --prefix={} -y {}={}").format(installer, package_env_path, package, version))
+        else:
+            package_env_path = os.path.join(conda_env_path + environment_name)
+            print('Installer: ' + installer)
+            print('Package: ' + package)
+            print('Checking for latest version...')   
+            print('Latest version: ' + version)
+            print('Creating a new environment entitled ' + environment_name + ' using ' + installer + '...')
+            print('Installation location: ' + package_env_path)
+            run(("{} create -y -n {} {}={}").format(installer, environment_name, package, version))            
+            
+            
         
     
     
