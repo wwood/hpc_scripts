@@ -115,7 +115,7 @@ def get_non_microbiome_jobs():
             continue
         else:
             cpus = int(splits[6])
-            ram = int(splits[7].replace('gb',''))
+            ram = int(splits[7].replace('gb','').replace('g',''))
             jc.num_total_cpus += cpus
             jc.ram_total += ram
             if splits[9] == 'R':
