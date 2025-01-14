@@ -408,6 +408,8 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
         time_required = int(args.days) * 24
     if args.weeks is not None:
         time_required = int(args.weeks) * 168
+    if time_required > 48:
+        time_required = 48 # This is only for comparison with time_left - the walltime set in the PBS script is changed elsewhere.
     if int(time_required) > int(time_left):
         sys.stderr.write('\n###################################################################')
         sys.stderr.write('\nWARNING: The requested walltime coincides with server maintenance.')
@@ -428,6 +430,9 @@ Further information can also be found in the CMR Compute Notes -  https://tinyur
         hours = 24*args.days
     else:
         hours = args.hours
+    if hours > 48:
+        logging.warning("The requested walltime is greater than 48 hours. Truncating to 48 since aquarius cannot currently handle longer running jobs.")
+        hours = 48
 
     if args.mem is not None and args.cpus is not None:
         if args.mem > 250 and args.cpus/124 != args.mem/1000 :
