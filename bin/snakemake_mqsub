@@ -82,6 +82,8 @@ if __name__ == '__main__':
     if 'mem_mb' in job_properties['resources']:
         mem_mb = job_properties['resources']['mem_mb']
         mem_gb = int(mem_mb / 1024)
+        if mem_gb < 1:
+            mem_gb = 1
         mem_argument = "-m {}".format(mem_gb)
     else:
         mem_argument = ''
