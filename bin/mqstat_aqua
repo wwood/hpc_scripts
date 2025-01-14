@@ -1,0 +1,412 @@
+#!/usr/bin/env python3.4
+
+# Must be python3.4-compatible since that is what is on the lyra base
+
+# Script to more easily submit jobs to the QUT HPC queuing system
+
+__author__ = "Ben Woodcroft"
+__copyright__ = "Copyright 2020"
+__credits__ = ["Ben Woodcroft"]
+__license__ = "GPL3"
+__maintainer__ = "Ben Woodcroft"
+__email__ = "benjwoodcroft near gmail.com"
+__status__ = "Development"
+
+import argparse
+import logging
+import os
+import subprocess
+import getpass
+import re
+from datetime import datetime, timedelta
+import datetime
+import json
+
+## TODO: Code below copied from the mqsub script. Code shouldn't really be copied but imported.
+
+def run(command, stdin=None):
+    '''
+    Run a subprocess.check_output() with the given command with
+    'bash -c command'
+    returning the stdout. If the command fails (i.e. has a non-zero exitstatus),
+    raise a ExternCalledProcessError that includes the $stderr as part of
+    the error message
+
+    Parameters
+    ----------
+    command: str
+        command to run
+    stdin: str or None
+        stdin to be provided to the process, to subprocess.communicate.
+
+    Returns
+    -------
+    Standard output of the run command
+
+    Exceptions
+    ----------
+    extern.ExternCalledProcessError including stdout and stderr of the run
+    command should it return with non-zero exit status.
+    '''
+    #logging.debug("Running extern cmd: %s" % command)
+
+    using_stdin = stdin is not None
+    process = process = subprocess.Popen(
+        ["bash",'-o','pipefail',"-c", command],
+        stdin= (subprocess.PIPE if using_stdin else None),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate(stdin)
+
+    if process.returncode != 0:
+        raise ExternCalledProcessError(process, command, stdout.decode(), stderr.decode())
+    return stdout
+
+class ExternCalledProcessError(subprocess.CalledProcessError):
+    def __init__(self, completed_process, command, stdout, stderr):
+        self.command = command
+        self.returncode = completed_process.returncode
+        self.stderr = stderr
+        self.stdout = stdout
+        self.completed_process = completed_process
+
+    def __str__(self):
+        return "Command %s returned non-zero exit status %i.\n"\
+            "STDERR was: %sSTDOUT was: %s" % (
+                self.command,
+                self.returncode,
+                self.stderr,
+                self.stdout)
+
+def printTable(myDict, colList=None):
+   if not colList: colList = list(myDict[0].keys() if myDict else [])
+   myList = [colList] # 1st row = header
+   for item in myDict: myList.append([str(item[col] if item[col] is not None else '') for col in colList])
+   colSize = [max(map(len,col)) for col in zip(*myList)]
+   formatStr = ' | '.join(["{{:<{}}}".format(i) for i in colSize])
+   myList.insert(1, ['-' * i for i in colSize]) # Seperating line
+   for item in myList: print(formatStr.format(*item))
+   
+def strfdelta(tdelta, fmt):
+    d = {"days": tdelta.days}
+    d["hours"], rem = divmod(tdelta.seconds, 3600)
+    d["minutes"], d["seconds"] = divmod(rem, 60)
+    return fmt.format(**d)
+
+class JobsCount:
+    def __init__(self):
+        self.num_running = 0
+        self.num_queued = 0
+        self.num_other = 0
+        self.num_running_cpus = 0
+        self.num_total_cpus = 0
+        self.ram_running = 0
+        self.ram_total = 0
+
+def get_non_microbiome_jobs():
+    all_my_jobs = run('qstat -u `whoami`').decode('latin-1').split('\n')[5:]
+    jc = JobsCount()
+    for row in all_my_jobs:
+        splits = list(row.split())
+        if len(splits) == 0:
+            continue
+        if len(splits) != 11:
+            raise Exception("Unexpected qstat output: %s" % row)
+        if 'microbi' in splits[2]:
+            continue
+        else:
+            cpus = int(splits[6])
+            ram = int(splits[7].replace('gb','').replace('g',''))
+            jc.num_total_cpus += cpus
+            jc.ram_total += ram
+            if splits[9] == 'R':
+                jc.num_running += 1
+                jc.num_running_cpus += cpus
+                jc.ram_running += ram
+            elif splits[9] == 'Q':
+                jc.num_queued += 1
+            else:
+                jc.num_other += 1
+    return jc
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', help='output debug information', action="store_true")
+    #parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
+    parser.add_argument('--quiet', help='only output errors', action="store_true")
+    parser.add_argument('--list', help='output all jobs on the microbiome queue [default: Provide overview]', action="store_true")
+    parser.add_argument('--avail', help='output the amount of spare resources per node [default: Provide overview]', action="store_true")
+    args = parser.parse_args()
+
+    # Setup logging
+    if args.debug:
+        loglevel = logging.DEBUG
+    elif args.quiet:
+        loglevel = logging.ERROR
+    else:
+        loglevel = logging.INFO
+    logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+    try:    
+        overall_json = json.loads(run('qstat -f -F json microbiome').decode('latin-1'))
+    except:
+        raise Exception('Malformed qstat JSON detected. Unable to parse output')
+    if 'Jobs' in overall_json:
+        overall_json = overall_json['Jobs']
+    else:
+        overall_json = {}
+    microbiome_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']=='microbiome'])
+    queue_nodes = ['cl5n010','cl5n011','cl5n012','cl5n013']
+    other_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['job_state'] =='R' and j['exec_host'].split('/')[0] in queue_nodes])
+    
+    time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip()
+    
+    user_replace_regex = re.compile('@.*')
+    server_regex = re.compile('/.*')
+
+    ## TODO:
+    # Use full name not short job status
+
+    if args.list:
+        dicts=[]
+        for (jid, j) in microbiome_jobs:
+            if j['job_state']=='R':
+                try:
+                    rawtime = datetime.datetime.strptime(j['stime'], '%a %b %d %H:%M:%S %Y')
+                    walltime = timedelta(hours=int(j['Resource_List']['walltime'].replace(':00:00','')))
+                    runtime = j['stime']
+                    elapsedtime = datetime.datetime.now() - rawtime
+                    perctime = int(elapsedtime / walltime * 100)
+                    elapsedtime2 = strfdelta(elapsedtime, '{days} days, {hours} hrs, {minutes} mins')
+                    node=j['exec_host']
+                except KeyError:
+                    # Occasional KeyError, maybe when the job just started?
+                    runtime = '-'
+                    elapsedtime = '-'
+                    elapsedtime2 = '-'
+                    rawtime = '-'
+                    perctime = '-'
+                    node = '-'
+            else:
+                runtime = '-'
+                elapsedtime = '-'
+                elapsedtime2 = '-'
+                rawtime = '-'
+                perctime = '-'
+                node = '-'
+            job = {'PBS ID':jid,
+                   #'job name': j[''],
+                   'username':user_replace_regex.sub('',j['Job_Owner']),
+                   'state':j['job_state'],
+                   'CPUs':str(j['Resource_List']['ncpus']),
+                   'RAM':j['Resource_List']['mem'],
+                   'walltime (hrs)':j['Resource_List']['walltime'].replace(':00:00',''),
+                   'start time':runtime,
+                   'timer':elapsedtime,
+                   'elapsed time':elapsedtime2,
+                   '% walltime':perctime,
+                   'microbiome queue':"yes",
+                   'node':node,
+                   'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
+                   }
+            dicts.append(job)
+        for (jid, j) in other_jobs:
+            if j['queue']!='microbiome':    
+                job = {'PBS ID':jid,
+                   'username':user_replace_regex.sub('',j['Job_Owner']),
+                   'state':j['job_state'],
+                   'CPUs':str(j['Resource_List']['ncpus']),
+                   'RAM':j['Resource_List']['mem'],
+                   'walltime (hrs)':j['Resource_List']['walltime'].replace(':00:00',''),
+                   'start time':runtime,
+                   'timer':elapsedtime,
+                   'elapsed time':elapsedtime2,
+                   '% walltime':perctime,
+                   'microbiome queue':"no",
+                   'node':node,
+                   'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
+                   }
+            dicts.append(job)
+        dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates
+        dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['username'], d['elapsed time']), reverse = True)
+        print('\nList of jobs in queue:')
+        print('----------------------')
+        printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime','node'))
+        print('\nTime left until maintenance (hr:min:sec): ' + time_left + '\n')
+   
+    elif args.avail:
+        dicts=[]
+        for (jid, j) in microbiome_jobs:
+            if j['job_state']=='R':
+                job = {'PBS ID':jid,
+                   'CPUs':int(j['Resource_List']['ncpus']),
+                   'RAM':int(j['Resource_List']['mem'].replace('gb','')),
+                   'node':j['exec_host'].split('/')[0]
+                   }
+                dicts.append(job)
+        for (jid, j) in other_jobs:
+            if j['queue']!='microbiome':    
+                job = {'PBS ID':jid,
+                   'CPUs':int(j['Resource_List']['ncpus']),
+                   'RAM':int(j['Resource_List']['mem'].replace('gb','').replace('000mb','')),
+                   'node':j['exec_host'].split('/')[0]
+                   }
+                dicts.append(job)
+        dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates   
+        
+        cl5n010_ram=0
+        cl5n010_cpu=0
+        for line in dicts:
+            if 'cl5n010' in line['node']:
+                cl5n010_cpu += line['CPUs']
+                cl5n010_ram += line['RAM']
+        cl5n011_ram=0
+        cl5n011_cpu=0
+        for line in dicts:
+            if 'cl5n011' in line['node']:
+                cl5n011_cpu += line['CPUs']
+                cl5n011_ram += line['RAM']
+        cl5n012_ram=0
+        cl5n012_cpu=0
+        for line in dicts:
+            if 'cl5n012' in line['node']:
+                cl5n012_cpu += line['CPUs']
+                cl5n012_ram += line['RAM']
+        cl5n013_ram=0
+        cl5n013_cpu=0
+        for line in dicts:
+            if 'cl5n013' in line['node']:
+                cl5n013_cpu += line['CPUs']
+                cl5n013_ram += line['RAM']
+       
+        node_table=[]      
+        node_summary = {'node':str('cl5n010'),
+                'CPU': str(124-cl5n010_cpu) + str(' threads'),
+                'RAM':str(1006-cl5n010_ram) + str(' GB')}
+        node_table.append(node_summary)
+        node_summary = {'node':str('cl5n011'),
+                'CPU': str(124-cl5n011_cpu) + str(' threads'),
+                'RAM':str(1006-cl5n011_ram) + str(' GB')}
+        node_table.append(node_summary)
+        node_summary = {'node':str('cl5n012'),
+                'CPU': str(124-cl5n012_cpu) + str(' threads'),
+                'RAM':str(1006-cl5n012_ram) + str(' GB')}
+        node_table.append(node_summary)
+        node_summary = {'node':str('cl5n013'),
+                'CPU': str(124-cl5n013_cpu) + str(' threads'),
+                'RAM':str(1006-cl5n013_ram) + str(' GB')}
+        node_table.append(node_summary)
+        
+        print('Available resources:')
+        print('--------------------')
+        printTable(node_table, colList=('node','CPU', 'RAM'))
+    
+    else:
+        num_jobs = len(microbiome_jobs)
+        num_cpus_not_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']!='R'])
+
+        total_cpus = 124*len(queue_nodes)
+
+        num_jobs_running = sum([1 for m in microbiome_jobs if m[1]['job_state']=='R'])
+        num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']=='R'])
+
+        non_microbiome_jobs = get_non_microbiome_jobs()
+
+        if num_jobs > 0:
+            frac_jobs_running = num_jobs_running/num_jobs
+        else:
+            frac_jobs_running = 0
+        print("Microbiome group jobs running: {} / {} ({:.2f}%)".format(num_jobs_running, num_jobs, frac_jobs_running*100))
+        print("Microbiome group CPUs utilized: {} / {} ({:.2f}%)".format(num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
+        print("Microbiome group CPUs queued: {}".format(num_cpus_not_running))
+
+        import getpass
+        user = getpass.getuser()
+
+        my_jobs = []#list([m[1] for m in microbiome_jobs if user_replace_regex.sub('',m[1]['Job_Owner'])==user])
+        for m in microbiome_jobs:
+            if user_replace_regex.sub('',m[1]['Job_Owner'])==user:
+                my_jobs.append(m)
+        num_jobs = len(my_jobs)
+        num_cpus_not_running = sum([m[1]['Resource_List']['ncpus'] for m in my_jobs if m[1]['job_state']!='R'])
+        num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in my_jobs if m[1]['job_state']=='R'])
+        num_jobs_running = len([1 for m in my_jobs if m[1]['job_state']=='R'])
+
+        print("{} jobs running: {} / {} ({:.1f}%)".format(user, num_jobs_running, num_jobs, num_jobs_running/num_jobs*100 if num_jobs > 0 else 0))
+        print("{} CPUs running: {} / {} ({:.1f}%)".format(user, num_cpus_running, total_cpus, num_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
+        print("{} CPUs queued: {}".format(user, num_cpus_not_running))
+        print("{} lyra queue jobs running: {} / {} ({:.1f}%)".format(
+            user,
+            non_microbiome_jobs.num_running,
+            non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other,
+            non_microbiome_jobs.num_running/(non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other)*100 if (non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other) > 0 else 0))
+        print("{} lyra queue CPUs running: {} / {} ({:.1f}%)".format(
+            user,
+            non_microbiome_jobs.num_running_cpus,
+            non_microbiome_jobs.num_total_cpus,
+            non_microbiome_jobs.num_running_cpus/non_microbiome_jobs.num_total_cpus*100 if non_microbiome_jobs.num_total_cpus > 0 else 0))
+        print("{} lyra queue RAM running: {} / {} GB ({:.1f}%)".format(
+            user,
+            non_microbiome_jobs.ram_running,
+            non_microbiome_jobs.ram_total,
+            non_microbiome_jobs.ram_running/non_microbiome_jobs.ram_total*100 if non_microbiome_jobs.ram_total > 0 else 0))
+        if non_microbiome_jobs.num_other > 0:
+            print("NOTE: {} non-microbiome jobs of {} were neither running nor queued".format(non_microbiome_jobs.num_other, user))
+
+        my_comments = {}
+        for m in my_jobs:
+            try:
+                comment = m[1]['comment']
+                if 'Job run at' not in comment:
+                    if comment in my_comments:
+                        my_comments[comment] += 1
+                    else:
+                        my_comments[comment] = 1
+            except KeyError:
+                pass
+        if len(my_comments) > 0:
+            for (comment, count) in my_comments.items():
+                print("{} job comment: \"{}\" ({} jobs)".format(user, comment, count))
+
+        other_running_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']!='microbiome' and j['job_state']=='R'])
+        non_microbiome_jobs_on_our_nodes = []
+        for m in other_running_jobs:
+            if server_regex.sub('',m[1]['exec_host']) in queue_nodes:
+                non_microbiome_jobs_on_our_nodes.append(m)
+        num_non_microbiome_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in non_microbiome_jobs_on_our_nodes])
+        if num_non_microbiome_cpus_running > 0:
+            print("NOTE: Non-microbiome group jobs / CPU: {} / {} ({:.1f}%)".format(
+                len(non_microbiome_jobs_on_our_nodes),
+                num_non_microbiome_cpus_running,
+                num_non_microbiome_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
+
+        # Get an overall state of the cluster
+        pbsnodeinfo = run('pbsnodeinfo').decode()
+        # Node    :   cputype |        cpuarch ;    cpu usage;    mem usage; gputype; gpu usage
+        # =====================================================================================
+        # cl4n001 : E7-8890v4 |       avx,avx2 ;  6 / 192 cpus; 500 / 5794 GB
+        # cl4n002 :      6140 |avx,avx2,avx512 ;  8 / 36 cpus;  32 / 186 GB;  P100; 1 / 4 gpus
+        # cl4n003 :      6140 |avx,avx2,avx512 ;  0 / 36 cpus;   0 / 186 GB;  P100; 0 / 4 gpus
+        # cl4n007 :      6140 |avx,avx2,avx512 ; 35 / 36 cpus; 324 / 376 GB   
+        line_re = re.compile(r'^(cl\d)\S+ *: *.*?; *(\d+) / (\d+) cpus')
+        cpu_usage = {}
+        for line in pbsnodeinfo.split('\n'):
+            if line.startswith('Node') or line.startswith('===') or line.strip() == '':
+                continue
+            matches = line_re.match(line)
+            if matches:
+                node_group = matches.group(1)
+                num_cpus_used = int(matches.group(2))
+                num_cpus = int(matches.group(3))
+                if node_group not in cpu_usage:
+                    cpu_usage[node_group] = {'used': 0, 'total': 0}
+                cpu_usage[node_group]['used'] += num_cpus_used
+                cpu_usage[node_group]['total'] += num_cpus
+            else:
+                print("WARNING: Could not parse pbsnodeinfo line: {}".format(line))
+        for node_group in sorted(cpu_usage.keys()):
+            print("Node group {}: {} / {} CPUs ({:.1f}%)".format(
+                node_group,
+                cpu_usage[node_group]['used'],
+                cpu_usage[node_group]['total'],
+                cpu_usage[node_group]['used']/cpu_usage[node_group]['total']*100 if cpu_usage[node_group]['total'] > 0 else 0))
