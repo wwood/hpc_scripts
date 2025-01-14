@@ -113,7 +113,12 @@ if __name__ == '__main__':
     # But currently mqsub ignores this anyway, so definiting --name has no effect.
     job_name = os.path.basename(jobscript).replace('snakemake','')
 
-    cmd = "mqsub --no-email --quiet --bg --name {job_name} -t {threads} {mem} {hours} --script {script} {queue} {segregated_log_files_arg} {extra_mqsub_args} 2>&1".format(
+    mqsub_command = 'mqsub'
+    if args.queue == 'aqua':
+        mqsub_command = 'mqsub_aqua'
+
+    cmd = "{mqsub_command} --no-email --quiet --bg --name {job_name} -t {threads} {mem} {hours} --script {script} {queue} {segregated_log_files_arg} {extra_mqsub_args} 2>&1".format(
+        mqsub_command=mqsub_command,
         job_name=job_name, extra_mqsub_args=extra_mqsub_args,
         threads=threads, script=jobscript, mem=mem_argument, hours=runtime_hours, queue=queue, 
         segregated_log_files_arg=segregated_log_files_arg)
