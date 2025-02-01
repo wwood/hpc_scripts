@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from os.path import join
 
 """
 Update config.yaml
@@ -9,10 +10,11 @@ Run 'snakemake --scheduler greedy --cores 32 --use-conda --profile mqsub-lyra --
 
 dorado = config["dorado_exec"]
 outfolder = config["output_dir"]
+models_directory = config["models_directory"]
 
 # Create necessary directories
-os.makedirs(f"{outfolder}logs", exist_ok=True)
-os.makedirs(f"{outfolder}basecalled", exist_ok=True)
+os.makedirs(join(outfolder,'logs'), exist_ok=True)
+os.makedirs(join(outfolder,'basecalled'), exist_ok=True)
 
 # Read POD5 file list
 pod5_files = pd.DataFrame(columns=["pod_id", "filepath"])
@@ -23,11 +25,9 @@ with open(config["pod5_sample_list"]) as r:
 wildcard_constraints:
     podfile = r".+\.pod5"  # Ensure the wildcard matches valid POD5 filenames
 
-localrules: cat_bamfiles, dorado_demux
-
 rule all:
     input:
-        outfolder + "demux.done"
+        join(outfolder, "demux.done")
 
 rule dorado_basecaller:
     input:
@@ -37,39 +37,46 @@ rule dorado_basecaller:
         base_mods = "5mC_5hmC 6mA",
         kit_name = "SQK-NBD114-24"
     output:
-        outfolder + "basecalled/{podfile}.bam"
+        join(outfolder, "basecalled", "{podfile}.bam")
     log:
-        outfolder + "logs/{podfile}.log"
-    threads: 32
+        join(outfolder, "logs", "{podfile}.log")
+    threads: 6
     resources:
-        mem_mb=128*1024,
-        gpu=1,
+        mem_mb=64*1024, # Having (possibly unrelated problems) using 8G
+        gpus=1,
         runtime=24*60*2
     shell:
-        "{dorado} basecaller {params.model} {input.pod5_file} --modified-bases {params.base_mods} --kit-name {params.kit_name} > {output} 2> {log}"
+        "bash -c 'nvidia-smi 1>&2 && {dorado} basecaller {params.model} {input.pod5_file} --modified-bases {params.base_mods} --kit-name {params.kit_name} --models-directory {models_directory} > {output}' 2> {log}"
 
 rule cat_bamfiles:
     input:
-        expand(outfolder + "basecalled/{pod_id}.bam", pod_id=pod5_files["pod_id"])
+        expand(join(outfolder, "basecalled/{pod_id}.bam"), pod_id=pod5_files["pod_id"])
     output:
-        outfolder + "basecalls.bam"
+        join(outfolder, "basecalls.bam")
     conda:
         "envs/samtools.yml"
     log:
-        outfolder + "logs/cat_bamfiles.log"
+        join(outfolder, "logs", "cat_bamfiles.log")
+    resources:
+        mem_mb=8*1024,
+        runtime=12*60
     shell:
         "samtools merge {output} {input} 2> {log}"
 
 rule dorado_demux:
     input:
-        outfolder + "basecalls.bam"
+        join(outfolder, "basecalls.bam")
     params:
         options = "--no-classify",
     output:
-        outfolder = outfolder + "final_bamfiles",
-        done = touch(outfolder + "demux.done")
+        outfolder = directory(join(outfolder, "final_bamfiles")),
+        done = touch(join(outfolder, "demux.done"))
     log:
-        outfolder + "logs/demux.log"
+        join(outfolder, "logs", "demux.log")
     threads: 1
+    resources:
+        mem_mb=8*1024, # guess work
+        runtime=12*60, # 12 hours - more than enough I think
+        gpus=1, # Possible it might work in CPU mode, but doesn't at least of the box.
     shell:
         "{dorado} demux {input} {params.options} --output-dir {output.outfolder} 2> {log}"
