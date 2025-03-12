@@ -52,9 +52,3 @@ case $- in *i*) echo "** cl5n013 disk usage (%): `cat /work/microbiome/cl5n013_d
 mkdir -p ~/.config/snakemake
 cd ~/.config/snakemake && ln -sf /work/microbiome/sw/hpc_scripts/snakemake_configs/* . && cd $OLDPWD
 
-
-# Aqua-specific, not needed for Lyra, but aqua-specific extras are in cmr_bashrc_extras_aqua.bash aren't currently being loaded.
-# Setup for mqinteractive. If interactive and latest.sh exists, load 'er up.
-if [[ ${PBS_ENVIRONMENT} == "PBS_INTERACTIVE" ]] && [[ -f $HOME/.hpc_scripts/mqinteractive_scripts/latest.sh ]]; then
-    source $HOME/.hpc_scripts/mqinteractive_scripts/latest.sh
-fi
