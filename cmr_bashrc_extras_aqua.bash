@@ -18,3 +18,6 @@ cd ~/.config/snakemake && ln -sf /work/microbiome/sw/hpc_scripts/snakemake_confi
 if ([[ ${PBS_ENVIRONMENT} == "PBS_INTERACTIVE" ]] || [[ ${HOSTNAME} == "cpu1n001" ]] || [[ ${HOSTNAME} == "gpu1n001" ]]) && [[ -f $HOME/.hpc_scripts/mqinteractive_scripts/latest.sh ]]; then
     source $HOME/.hpc_scripts/mqinteractive_scripts/latest.sh
 fi
+
+# Add mqinteractive as an alias, so that the history is saved before running mqinteractive
+alias mqinteractive='history -a; mqinteractive-real'
