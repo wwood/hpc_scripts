@@ -15,6 +15,6 @@ cd ~/.config/snakemake && ln -sf /work/microbiome/sw/hpc_scripts/snakemake_confi
 
 # Setup for mqinteractive. If interactive and latest.sh exists, load 'er up.
 # To solve the issue of ssh-to-job to interactive job acting like starting an interactive, we need different logic to test it. Using the $HOSTNAME will work, and we’ll just have to deal with it down the track if we end up getting more interactive hosts
-if ([[ ${PBS_ENVIRONMENT} == "PBS_INTERACTIVE" ]] || [[ ${HOSTNAME} == "cpu1n001" ]]) && [[ -f $HOME/.hpc_scripts/mqinteractive_scripts/latest.sh ]]; then
+if ([[ ${PBS_ENVIRONMENT} == "PBS_INTERACTIVE" ]] || [[ ${HOSTNAME} == "cpu1n001" ]] || [[ ${HOSTNAME} == "gpu1n001" ]]) && [[ -f $HOME/.hpc_scripts/mqinteractive_scripts/latest.sh ]]; then
     source $HOME/.hpc_scripts/mqinteractive_scripts/latest.sh
 fi
