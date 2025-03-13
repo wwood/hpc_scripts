@@ -1,8 +1,10 @@
 . /etc/os-release
 
+echo "running cmr_bashrc_extras.bash" 1>&2
 case $ID in
-  sles) echo "Suse Linux" 1>&2
-    # echo Running lyra cmr .bashrc extras 1>&2
+  sles) 
+    # echo "Suse Linux" 1>&2
+    echo Running lyra cmr .bashrc extras 1>&2
     . /work/microbiome/sw/hpc_scripts/cmr_bashrc_extras_lyra.bash
     ;;
   rhel)
