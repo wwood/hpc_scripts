@@ -30,9 +30,17 @@ $ mqsub --hours 1 -- echo hi
 ```
 
 There are several other options, which can be viewed with `mqsub -h`
-```
+```mqsub -h
+                            _
+                           | |
+  _ __ ___   __ _ ___ _   _| |__
+ | '_ ` _ \ / _` / __| | | | '_ \
+ | | | | | | (_| \__ \ |_| | |_) |
+ |_| |_| |_|\__, |___/\__,_|_.__/  Centre for Microbiome Research, QUT
+               | |
+               |_|
 Example usage:
-    mqsub -t 24 -m 250 --hours 168 -- aviary recover --pe-1 $R1 --pe-2 $R2 --max-threads 24 --n-cores 24 --output $runID.aviary.output 
+    mqsub -t 24 -m 250 --hours 168 -- aviary recover --pe-1 $R1 --pe-2 $R2 --max-threads 24 --n-cores 24 --output $runID.aviary.output
     mqsub -t 8 -m 32 --hours 168 --command-file file.txt --chunk-num 5
 
 positional arguments:
@@ -45,7 +53,7 @@ optional arguments:
   -t CPUS, --cpus CPUS  Number of CPUs to queue job with [default: 1]
   -g GPU, --gpu GPU     Number of GPUs to use [default: 0]
   -m MEM, --mem MEM, --ram MEM
-                        GB of RAM to ask for [default: 4*num_cpus]
+                        GB of RAM to ask for [default: 8*num_cpus]
   --directive DIRECTIVE
                         Arbitrary PBS directory to add e.g. '-l ngpus=1' to ask for a GPU [default: Not used]
   -q QUEUE, --queue QUEUE
@@ -71,17 +79,19 @@ optional arguments:
   --chunk-num CHUNK_NUM
                         Number of chunks to divide the commands (from --command-file) into
   --chunk-size CHUNK_SIZE
-                        Number of commands (from --command-file) per a chunk 
+                        Number of commands (from --command-file) per a chunk
   --prelude PRELUDE     Code from this file will be run before each chunk
   --scratch-data SCRATCH_DATA [SCRATCH_DATA ...]
                         Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs.
-  --run-tmp-dir         Executes your command(s) on the local SSD ($TMPDIR/mqsub_processing) of a node. IMPORTANT: Dont use absolute paths for the --output of your command(s), it will force the data there instead.
+  --run-tmp-dir         Executes your command(s) on the local SSD ($TMPDIR/mqsub_processing) of a node. IMPORTANT: Use absolute paths for your input files, and a relative path for your output.
+  --depend DEPEND [DEPEND ...]
+                        Space separated list of ids for jobs this job should depend on.
+  --segregated-log-files
+                        Put log files in ~/qsub_logs/<date>/<directory> instead of the current working directory.
 
 ----------------------------------------------------------------------------------------------------------
 Full README can be found on the CMR github - https://github.com/centre-for-microbiome-research/hpc_scripts
 Further information can also be found in the CMR Compute Notes -  https://tinyurl.com/cmr-internal-compute
-
-
 ```
 
 If you have a large amount of commands (one command per line in a single file) you wish to split in a number of qsub jobs, you can do the following:
