@@ -1,408 +1,345 @@
 #!/usr/bin/env python3
+"""
+Cluster Usage Monitor
 
-__author__ = "Ben Woodcroft"
-__copyright__ = "Copyright 2025"
-__credits__ = ["Ben Woodcroft"]
-__license__ = "GPL3"
-__maintainer__ = "Ben Woodcroft"
-__email__ = "benjwoodcroft near gmail.com"
-__status__ = "Development"
+This script analyzes PBS node information and job statistics to provide a summary of:
+1. Overall cluster resource usage
+2. Nodes running at high CPU/RAM utilization (>80%)
+3. Current user's resource consumption
+4. Resource usage by all users in the "microbiome" group
+"""
 
-import argparse
-import logging
-import os
 import subprocess
-import getpass
 import re
-from datetime import datetime, timedelta
-import datetime
-import json
+import os
+import pwd
+import grp
+from collections import defaultdict
 
-## TODO: Code below copied from the mqsub script. Code shouldn't really be copied but imported.
-
-def run(command, stdin=None):
-    '''
-    Run a subprocess.check_output() with the given command with
-    'bash -c command'
-    returning the stdout. If the command fails (i.e. has a non-zero exitstatus),
-    raise a ExternCalledProcessError that includes the $stderr as part of
-    the error message
-
-    Parameters
-    ----------
-    command: str
-        command to run
-    stdin: str or None
-        stdin to be provided to the process, to subprocess.communicate.
-
-    Returns
-    -------
-    Standard output of the run command
-
-    Exceptions
-    ----------
-    extern.ExternCalledProcessError including stdout and stderr of the run
-    command should it return with non-zero exit status.
-    '''
-    #logging.debug("Running extern cmd: %s" % command)
-
-    using_stdin = stdin is not None
-    process = process = subprocess.Popen(
-        ["bash",'-o','pipefail',"-c", command],
-        stdin= (subprocess.PIPE if using_stdin else None),
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate(stdin)
-
+def run_command(command):
+    """Execute a shell command and return the output."""
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
     if process.returncode != 0:
-        raise ExternCalledProcessError(process, command, stdout.decode(), stderr.decode())
-    return stdout
+        print(f"Error executing command: {command}")
+        print(stderr.decode('utf-8'))
+        return None
+    return stdout.decode('utf-8')
 
-class ExternCalledProcessError(subprocess.CalledProcessError):
-    def __init__(self, completed_process, command, stdout, stderr):
-        self.command = command
-        self.returncode = completed_process.returncode
-        self.stderr = stderr
-        self.stdout = stdout
-        self.completed_process = completed_process
-
-    def __str__(self):
-        return "Command %s returned non-zero exit status %i.\n"\
-            "STDERR was: %sSTDOUT was: %s" % (
-                self.command,
-                self.returncode,
-                self.stderr,
-                self.stdout)
-
-def printTable(myDict, colList=None):
-   if not colList: colList = list(myDict[0].keys() if myDict else [])
-   myList = [colList] # 1st row = header
-   for item in myDict: myList.append([str(item[col] if item[col] is not None else '') for col in colList])
-   colSize = [max(map(len,col)) for col in zip(*myList)]
-   formatStr = ' | '.join(["{{:<{}}}".format(i) for i in colSize])
-   myList.insert(1, ['-' * i for i in colSize]) # Seperating line
-   for item in myList: print(formatStr.format(*item))
-   
-def strfdelta(tdelta, fmt):
-    d = {"days": tdelta.days}
-    d["hours"], rem = divmod(tdelta.seconds, 3600)
-    d["minutes"], d["seconds"] = divmod(rem, 60)
-    return fmt.format(**d)
-
-class JobsCount:
-    def __init__(self):
-        self.num_running = 0
-        self.num_queued = 0
-        self.num_other = 0
-        self.num_running_cpus = 0
-        self.num_total_cpus = 0
-        self.ram_running = 0
-        self.ram_total = 0
-
-def get_non_microbiome_jobs():
-    all_my_jobs = run('qstat -u `whoami`').decode('latin-1').split('\n')[5:]
-    jc = JobsCount()
-    for row in all_my_jobs:
-        splits = list(row.split())
-        if len(splits) == 0:
+def parse_pbsnodeinfo():
+    """Parse pbsnodeinfo output to get node resource usage data."""
+    output = run_command("pbsnodeinfo")
+    if not output:
+        return []
+    
+    nodes = []
+    pattern = re.compile(r'^(\S+)\s+:.*?;\s*(\d+)\s*/\s*(\d+)\s*cpus;\s*(\d+)\s*/\s*(\d+)\s*GB')
+    
+    for line in output.splitlines():
+        # Skip header lines
+        if "Node" in line or "===" in line:
             continue
-        if len(splits) != 11:
-            raise Exception("Unexpected qstat output: %s" % row)
-        if 'microbi' in splits[2]:
+            
+        match = pattern.search(line)
+        if match:
+            node_name = match.group(1)
+            used_cpu = int(match.group(2))
+            total_cpu = int(match.group(3))
+            used_mem = int(match.group(4))
+            total_mem = int(match.group(5))
+            
+            # Calculate usage percentages
+            cpu_percentage = (used_cpu / total_cpu * 100) if total_cpu > 0 else 0
+            mem_percentage = (used_mem / total_mem * 100) if total_mem > 0 else 0
+            
+            nodes.append({
+                'name': node_name,
+                'cpu_usage': cpu_percentage,
+                'ram_usage': mem_percentage,
+                'used_cpu': used_cpu,
+                'total_cpu': total_cpu,
+                'used_mem': used_mem,
+                'total_mem': total_mem,
+                'state': 'free' if used_cpu == 0 else 'job-busy'
+            })
+    
+    return nodes
+
+def parse_qstat():
+    """Parse qstat output to get job information."""
+    # Full format for detailed information
+    output = run_command("qstat -f")
+    if not output:
+        return []
+    
+    jobs = []
+    current_job = None
+    
+    for line in output.splitlines():
+        # Match job ID line
+        job_match = re.match(r'^Job Id: (.+)$', line)
+        if job_match:
+            if current_job:
+                jobs.append(current_job)
+            current_job = {'id': job_match.group(1), 'user': None, 'cpu_usage': 0, 'mem_usage': 0, 'state': None}
             continue
-        else:
-            cpus = int(splits[6])
-            ram = int(splits[7].replace('gb','').replace('g',''))
-            jc.num_total_cpus += cpus
-            jc.ram_total += ram
-            if splits[9] == 'R':
-                jc.num_running += 1
-                jc.num_running_cpus += cpus
-                jc.ram_running += ram
-            elif splits[9] == 'Q':
-                jc.num_queued += 1
-            else:
-                jc.num_other += 1
-    return jc
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', help='output debug information', action="store_true")
-    #parser.add_argument('--version', help='output version information and quit',  action='version', version=repeatm.__version__)
-    parser.add_argument('--quiet', help='only output errors', action="store_true")
-    parser.add_argument('--list', help='output all jobs on the microbiome queue [default: Provide overview]', action="store_true")
-    parser.add_argument('--avail', help='output the amount of spare resources per node [default: Provide overview]', action="store_true")
-    args = parser.parse_args()
-
-    # Setup logging
-    if args.debug:
-        loglevel = logging.DEBUG
-    elif args.quiet:
-        loglevel = logging.ERROR
-    else:
-        loglevel = logging.INFO
-    logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
-
-    try:    
-        overall_json = json.loads(run('qstat -f -F json microbiome').decode('latin-1'))
-    except:
-        raise Exception('Malformed qstat JSON detected. Unable to parse output')
-    if 'Jobs' in overall_json:
-        overall_json = overall_json['Jobs']
-    else:
-        overall_json = {}
-    microbiome_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']=='microbiome'])
-    queue_nodes = ['cl5n010','cl5n011','cl5n012','cl5n013']
-    other_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['job_state'] =='R' and j['exec_host'].split('/')[0] in queue_nodes])
+            
+        if not current_job:
+            continue
+            
+        # Match job owner
+        owner_match = re.search(r'Job_Owner = (.+)@', line)
+        if owner_match:
+            current_job['user'] = owner_match.group(1)
+            
+        # Match job state
+        state_match = re.search(r'job_state = ([A-Z])', line)
+        if state_match:
+            current_job['state'] = state_match.group(1)
+            
+        # Match resource usage
+        if 'resources_used' in line:
+            # CPU time
+            cpu_match = re.search(r'resources_used.cput = (\d+):(\d+):(\d+)', line)
+            if cpu_match:
+                h, m, s = map(int, cpu_match.groups())
+                current_job['cpu_usage'] = h * 3600 + m * 60 + s
+                
+            # Memory usage
+            mem_match = re.search(r'resources_used.mem = (\d+)kb', line)
+            if mem_match:
+                current_job['mem_usage'] = int(mem_match.group(1))
     
-    time_left = run('bash /pkg/hpc/scripts/time_until_outage.sh').decode().rstrip()
-    
-    user_replace_regex = re.compile('@.*')
-    server_regex = re.compile('/.*')
-
-    ## TODO:
-    # Use full name not short job status
-
-    if args.list:
-        dicts=[]
-        for (jid, j) in microbiome_jobs:
-            if j['job_state']=='R':
-                try:
-                    rawtime = datetime.datetime.strptime(j['stime'], '%a %b %d %H:%M:%S %Y')
-                    walltime = timedelta(hours=int(j['Resource_List']['walltime'].replace(':00:00','')))
-                    runtime = j['stime']
-                    elapsedtime = datetime.datetime.now() - rawtime
-                    perctime = int(elapsedtime / walltime * 100)
-                    elapsedtime2 = strfdelta(elapsedtime, '{days} days, {hours} hrs, {minutes} mins')
-                    node=j['exec_host']
-                except KeyError:
-                    # Occasional KeyError, maybe when the job just started?
-                    runtime = '-'
-                    elapsedtime = '-'
-                    elapsedtime2 = '-'
-                    rawtime = '-'
-                    perctime = '-'
-                    node = '-'
-            else:
-                runtime = '-'
-                elapsedtime = '-'
-                elapsedtime2 = '-'
-                rawtime = '-'
-                perctime = '-'
-                node = '-'
-            job = {'PBS ID':jid,
-                   #'job name': j[''],
-                   'username':user_replace_regex.sub('',j['Job_Owner']),
-                   'state':j['job_state'],
-                   'CPUs':str(j['Resource_List']['ncpus']),
-                   'RAM':j['Resource_List']['mem'],
-                   'walltime (hrs)':j['Resource_List']['walltime'].replace(':00:00',''),
-                   'start time':runtime,
-                   'timer':elapsedtime,
-                   'elapsed time':elapsedtime2,
-                   '% walltime':perctime,
-                   'microbiome queue':"yes",
-                   'node':node,
-                   'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
-                   }
-            dicts.append(job)
-        for (jid, j) in other_jobs:
-            if j['queue']!='microbiome':    
-                job = {'PBS ID':jid,
-                   'username':user_replace_regex.sub('',j['Job_Owner']),
-                   'state':j['job_state'],
-                   'CPUs':str(j['Resource_List']['ncpus']),
-                   'RAM':j['Resource_List']['mem'],
-                   'walltime (hrs)':j['Resource_List']['walltime'].replace(':00:00',''),
-                   'start time':runtime,
-                   'timer':elapsedtime,
-                   'elapsed time':elapsedtime2,
-                   '% walltime':perctime,
-                   'microbiome queue':"no",
-                   'node':node,
-                   'name': ', '.join(os.popen("finger {} | grep 'Name:' | awk '{{print $4, $5}}'".format(user_replace_regex.sub('',j['Job_Owner']))).read().splitlines())
-                   }
-            dicts.append(job)
-        dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates
-        dicts_sorted = sorted(dicts, key=lambda d: (d['state'], d['username'], d['elapsed time']), reverse = True)
-        print('\nList of jobs in queue:')
-        print('----------------------')
-        printTable(dicts_sorted, colList=('PBS ID','username', 'name', 'state', 'CPUs', 'RAM', 'walltime (hrs)', 'start time', 'elapsed time', '% walltime','node'))
-        print('\nTime left until maintenance (hr:min:sec): ' + time_left + '\n')
-   
-    elif args.avail:
-        dicts=[]
-        for (jid, j) in microbiome_jobs:
-            if j['job_state']=='R':
-                job = {'PBS ID':jid,
-                   'CPUs':int(j['Resource_List']['ncpus']),
-                   'RAM':int(j['Resource_List']['mem'].replace('gb','')),
-                   'node':j['exec_host'].split('/')[0]
-                   }
-                dicts.append(job)
-        for (jid, j) in other_jobs:
-            if j['queue']!='microbiome':    
-                job = {'PBS ID':jid,
-                   'CPUs':int(j['Resource_List']['ncpus']),
-                   'RAM':int(j['Resource_List']['mem'].replace('gb','').replace('000mb','')),
-                   'node':j['exec_host'].split('/')[0]
-                   }
-                dicts.append(job)
-        dicts = [i for n, i in enumerate(dicts) if i not in dicts[n + 1:]] #remove duplicates   
+    # Add the last job
+    if current_job:
+        jobs.append(current_job)
         
-        cl5n010_ram=0
-        cl5n010_cpu=0
-        for line in dicts:
-            if 'cl5n010' in line['node']:
-                cl5n010_cpu += line['CPUs']
-                cl5n010_ram += line['RAM']
-        cl5n011_ram=0
-        cl5n011_cpu=0
-        for line in dicts:
-            if 'cl5n011' in line['node']:
-                cl5n011_cpu += line['CPUs']
-                cl5n011_ram += line['RAM']
-        cl5n012_ram=0
-        cl5n012_cpu=0
-        for line in dicts:
-            if 'cl5n012' in line['node']:
-                cl5n012_cpu += line['CPUs']
-                cl5n012_ram += line['RAM']
-        cl5n013_ram=0
-        cl5n013_cpu=0
-        for line in dicts:
-            if 'cl5n013' in line['node']:
-                cl5n013_cpu += line['CPUs']
-                cl5n013_ram += line['RAM']
-       
-        node_table=[]      
-        node_summary = {'node':str('cl5n010'),
-                'CPU': str(124-cl5n010_cpu) + str(' threads'),
-                'RAM':str(1006-cl5n010_ram) + str(' GB')}
-        node_table.append(node_summary)
-        node_summary = {'node':str('cl5n011'),
-                'CPU': str(124-cl5n011_cpu) + str(' threads'),
-                'RAM':str(1006-cl5n011_ram) + str(' GB')}
-        node_table.append(node_summary)
-        node_summary = {'node':str('cl5n012'),
-                'CPU': str(124-cl5n012_cpu) + str(' threads'),
-                'RAM':str(1006-cl5n012_ram) + str(' GB')}
-        node_table.append(node_summary)
-        node_summary = {'node':str('cl5n013'),
-                'CPU': str(124-cl5n013_cpu) + str(' threads'),
-                'RAM':str(1006-cl5n013_ram) + str(' GB')}
-        node_table.append(node_summary)
-        
-        print('Available resources:')
-        print('--------------------')
-        printTable(node_table, colList=('node','CPU', 'RAM'))
+    return jobs
+
+def get_job_status_counts(jobs):
+    """Count jobs by status (running, queued, held)."""
+    status_counts = defaultdict(int)
     
-    else:
-        num_jobs = len(microbiome_jobs)
-        num_cpus_not_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']!='R'])
-
-        total_cpus = 124*len(queue_nodes)
-
-        num_jobs_running = sum([1 for m in microbiome_jobs if m[1]['job_state']=='R'])
-        num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in microbiome_jobs if m[1]['job_state']=='R'])
-
-        non_microbiome_jobs = get_non_microbiome_jobs()
-
-        if num_jobs > 0:
-            frac_jobs_running = num_jobs_running/num_jobs
+    for job in jobs:
+        state = job.get('state')
+        if state == 'R':
+            status_counts['running'] += 1
+        elif state == 'Q':
+            status_counts['queued'] += 1
+        elif state == 'H':
+            status_counts['held'] += 1
         else:
-            frac_jobs_running = 0
-        print("Microbiome group jobs running: {} / {} ({:.2f}%)".format(num_jobs_running, num_jobs, frac_jobs_running*100))
-        print("Microbiome group CPUs utilized: {} / {} ({:.2f}%)".format(num_cpus_running, total_cpus, num_cpus_running/total_cpus*100))
-        print("Microbiome group CPUs queued: {}".format(num_cpus_not_running))
+            status_counts['other'] += 1
+    
+    total = sum(status_counts.values())
+    running_percent = (status_counts['running'] / total * 100) if total > 0 else 0
+    
+    return {
+        'running': status_counts['running'],
+        'queued': status_counts['queued'],
+        'held': status_counts['held'],
+        'other': status_counts['other'],
+        'total': total,
+        'running_percent': running_percent
+    }
 
-        import getpass
-        user = getpass.getuser()
+def get_unix_group_members(group_name):
+    """Get all users belonging to a Unix group."""
+    try:
+        group = grp.getgrnam(group_name)
+        return group.gr_mem
+    except KeyError:
+        print(f"Group '{group_name}' not found")
+        return []
 
-        my_jobs = []#list([m[1] for m in microbiome_jobs if user_replace_regex.sub('',m[1]['Job_Owner'])==user])
-        for m in microbiome_jobs:
-            if user_replace_regex.sub('',m[1]['Job_Owner'])==user:
-                my_jobs.append(m)
-        num_jobs = len(my_jobs)
-        num_cpus_not_running = sum([m[1]['Resource_List']['ncpus'] for m in my_jobs if m[1]['job_state']!='R'])
-        num_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in my_jobs if m[1]['job_state']=='R'])
-        num_jobs_running = len([1 for m in my_jobs if m[1]['job_state']=='R'])
+def get_real_name(username):
+    """Get the real name for a username."""
+    try:
+        pwd_entry = pwd.getpwnam(username)
+        gecos = pwd_entry.pw_gecos
+        real_name = gecos.split(',')[0] if gecos else username
+        return real_name if real_name else username
+    except KeyError:
+        return username
 
-        print("{} jobs running: {} / {} ({:.1f}%)".format(user, num_jobs_running, num_jobs, num_jobs_running/num_jobs*100 if num_jobs > 0 else 0))
-        print("{} CPUs running: {} / {} ({:.1f}%)".format(user, num_cpus_running, total_cpus, num_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
-        print("{} CPUs queued: {}".format(user, num_cpus_not_running))
-        print("{} lyra queue jobs running: {} / {} ({:.1f}%)".format(
-            user,
-            non_microbiome_jobs.num_running,
-            non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other,
-            non_microbiome_jobs.num_running/(non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other)*100 if (non_microbiome_jobs.num_running + non_microbiome_jobs.num_queued + non_microbiome_jobs.num_other) > 0 else 0))
-        print("{} lyra queue CPUs running: {} / {} ({:.1f}%)".format(
-            user,
-            non_microbiome_jobs.num_running_cpus,
-            non_microbiome_jobs.num_total_cpus,
-            non_microbiome_jobs.num_running_cpus/non_microbiome_jobs.num_total_cpus*100 if non_microbiome_jobs.num_total_cpus > 0 else 0))
-        print("{} lyra queue RAM running: {} / {} GB ({:.1f}%)".format(
-            user,
-            non_microbiome_jobs.ram_running,
-            non_microbiome_jobs.ram_total,
-            non_microbiome_jobs.ram_running/non_microbiome_jobs.ram_total*100 if non_microbiome_jobs.ram_total > 0 else 0))
-        if non_microbiome_jobs.num_other > 0:
-            print("NOTE: {} non-microbiome jobs of {} were neither running nor queued".format(non_microbiome_jobs.num_other, user))
+def calculate_cluster_stats(nodes):
+    """Calculate summary statistics about cluster usage."""
+    total_nodes = len(nodes)
+    active_nodes = sum(1 for node in nodes if node['used_cpu'] > 0)
+    
+    high_cpu_nodes = sum(1 for node in nodes if node['cpu_usage'] >= 80)
+    high_ram_nodes = sum(1 for node in nodes if node['ram_usage'] >= 80)
+    
+    total_cpu_cores = sum(node['total_cpu'] for node in nodes)
+    used_cpu_cores = sum(node['used_cpu'] for node in nodes)
+    
+    total_memory_gb = sum(node['total_mem'] for node in nodes)
+    used_memory_gb = sum(node['used_mem'] for node in nodes)
+    
+    avg_cpu = sum(node['cpu_usage'] for node in nodes) / total_nodes if total_nodes else 0
+    avg_ram = sum(node['ram_usage'] for node in nodes) / total_nodes if total_nodes else 0
+    
+    return {
+        'total_nodes': total_nodes,
+        'active_nodes': active_nodes,
+        'high_cpu_nodes': high_cpu_nodes,
+        'high_cpu_percentage': (high_cpu_nodes / total_nodes * 100) if total_nodes else 0,
+        'high_ram_nodes': high_ram_nodes,
+        'high_ram_percentage': (high_ram_nodes / total_nodes * 100) if total_nodes else 0,
+        'avg_cpu': avg_cpu,
+        'avg_ram': avg_ram,
+        'total_cpu_cores': total_cpu_cores,
+        'used_cpu_cores': used_cpu_cores,
+        'cpu_utilization': (used_cpu_cores / total_cpu_cores * 100) if total_cpu_cores else 0,
+        'total_memory_gb': total_memory_gb,
+        'used_memory_gb': used_memory_gb,
+        'memory_utilization': (used_memory_gb / total_memory_gb * 100) if total_memory_gb else 0
+    }
 
-        my_comments = {}
-        for m in my_jobs:
-            try:
-                comment = m[1]['comment']
-                if 'Job run at' not in comment:
-                    if comment in my_comments:
-                        my_comments[comment] += 1
-                    else:
-                        my_comments[comment] = 1
-            except KeyError:
-                pass
-        if len(my_comments) > 0:
-            for (comment, count) in my_comments.items():
-                print("{} job comment: \"{}\" ({} jobs)".format(user, comment, count))
+def calculate_user_stats(jobs, user=None, group_members=None):
+    """Calculate statistics for a specific user or group."""
+    if user:
+        user_jobs = [job for job in jobs if job['user'] == user]
+    elif group_members:
+        user_jobs = [job for job in jobs if job['user'] in group_members]
+    else:
+        return None
+    
+    job_status = get_job_status_counts(user_jobs)
+    total_jobs = len(user_jobs)
+    total_cpu = sum(job['cpu_usage'] for job in user_jobs)
+    total_mem = sum(job['mem_usage'] for job in user_jobs)
+    
+    return {
+        'job_status': job_status,
+        'total_jobs': total_jobs,
+        'total_cpu_seconds': total_cpu,
+        'total_cpu_hours': total_cpu / 3600,
+        'total_memory_kb': total_mem,
+        'total_memory_gb': total_mem / (1024 * 1024),
+        'avg_cpu_per_job': total_cpu / total_jobs if total_jobs else 0,
+        'avg_mem_per_job': total_mem / total_jobs if total_jobs else 0
+    }
 
-        other_running_jobs = list([(jid, j) for (jid, j) in overall_json.items() if j['queue']!='microbiome' and j['job_state']=='R'])
-        non_microbiome_jobs_on_our_nodes = []
-        for m in other_running_jobs:
-            if server_regex.sub('',m[1]['exec_host']) in queue_nodes:
-                non_microbiome_jobs_on_our_nodes.append(m)
-        num_non_microbiome_cpus_running = sum([m[1]['Resource_List']['ncpus'] for m in non_microbiome_jobs_on_our_nodes])
-        if num_non_microbiome_cpus_running > 0:
-            print("NOTE: Non-microbiome group jobs / CPU: {} / {} ({:.1f}%)".format(
-                len(non_microbiome_jobs_on_our_nodes),
-                num_non_microbiome_cpus_running,
-                num_non_microbiome_cpus_running/total_cpus*100 if total_cpus > 0 else 0))
+def format_time_hours(seconds):
+    """Format seconds into hours or days."""
+    hours = seconds / 3600
+    if hours >= 24:
+        days = hours / 24
+        return f"{days:.2f} days"
+    else:
+        return f"{hours:.2f} hours"
 
-        # Get an overall state of the cluster
-        pbsnodeinfo = run('pbsnodeinfo').decode()
-        # Node    :   cputype |        cpuarch ;    cpu usage;    mem usage; gputype; gpu usage
-        # =====================================================================================
-        # cl4n001 : E7-8890v4 |       avx,avx2 ;  6 / 192 cpus; 500 / 5794 GB
-        # cl4n002 :      6140 |avx,avx2,avx512 ;  8 / 36 cpus;  32 / 186 GB;  P100; 1 / 4 gpus
-        # cl4n003 :      6140 |avx,avx2,avx512 ;  0 / 36 cpus;   0 / 186 GB;  P100; 0 / 4 gpus
-        # cl4n007 :      6140 |avx,avx2,avx512 ; 35 / 36 cpus; 324 / 376 GB   
-        line_re = re.compile(r'^(cl\d)\S+ *: *.*?; *(\d+) / (\d+) cpus')
-        cpu_usage = {}
-        for line in pbsnodeinfo.split('\n'):
-            if line.startswith('Node') or line.startswith('===') or line.strip() == '':
-                continue
-            matches = line_re.match(line)
-            if matches:
-                node_group = matches.group(1)
-                num_cpus_used = int(matches.group(2))
-                num_cpus = int(matches.group(3))
-                if node_group not in cpu_usage:
-                    cpu_usage[node_group] = {'used': 0, 'total': 0}
-                cpu_usage[node_group]['used'] += num_cpus_used
-                cpu_usage[node_group]['total'] += num_cpus
-            else:
-                print("WARNING: Could not parse pbsnodeinfo line: {}".format(line))
-        for node_group in sorted(cpu_usage.keys()):
-            print("Node group {}: {} / {} CPUs ({:.1f}%)".format(
-                node_group,
-                cpu_usage[node_group]['used'],
-                cpu_usage[node_group]['total'],
-                cpu_usage[node_group]['used']/cpu_usage[node_group]['total']*100 if cpu_usage[node_group]['total'] > 0 else 0))
+def main():
+    # Get current username
+    current_user = os.getlogin()
+    current_user_real_name = get_real_name(current_user)
+    
+    # print("\n=== CLUSTER USAGE MONITOR ===\n")
+    
+    # Get node data
+    # print("Collecting node information...")
+    nodes = parse_pbsnodeinfo()
+    
+    if not nodes:
+        print("Failed to gather node information. Check if pbsnodeinfo is available.")
+        return
+    
+    # Calculate cluster stats
+    cluster_stats = calculate_cluster_stats(nodes)
+    
+    # Get job data
+    # print("Collecting job information...")
+    jobs = parse_qstat()
+    
+    if not jobs:
+        print("Failed to gather job information. Check if qstat is available.")
+        return
+    
+    # Get overall job status
+    overall_job_status = get_job_status_counts(jobs)
+    
+    # Get microbiome group members
+    microbiome_members = get_unix_group_members("microbiome")
+    
+    # Calculate user stats
+    user_stats = calculate_user_stats(jobs, user=current_user)
+    group_stats = calculate_user_stats(jobs, group_members=microbiome_members)
+    
+    # Print the report
+    print("\n=== CLUSTER UTILIZATION SUMMARY ===")
+    print(f"Total nodes: {cluster_stats['total_nodes']}")
+    print(f"Active nodes: {cluster_stats['active_nodes']} ({cluster_stats['active_nodes']/cluster_stats['total_nodes']*100:.1f}%)")
+    print(f"Total CPU cores: {cluster_stats['total_cpu_cores']}")
+    print(f"Used CPU cores: {cluster_stats['used_cpu_cores']} ({cluster_stats['cpu_utilization']:.1f}%)")
+    print(f"Total memory: {cluster_stats['total_memory_gb']} GB")
+    print(f"Used memory: {cluster_stats['used_memory_gb']} GB ({cluster_stats['memory_utilization']:.1f}%)")
+    print(f"Nodes with high CPU (>80%): {cluster_stats['high_cpu_nodes']} ({cluster_stats['high_cpu_percentage']:.1f}%)")
+    print(f"Nodes with high RAM (>80%): {cluster_stats['high_ram_nodes']} ({cluster_stats['high_ram_percentage']:.1f}%)")
+    
+    print("\n=== JOB STATUS SUMMARY ===")
+    print(f"Total jobs: {overall_job_status['total']}")
+    print(f"Running: {overall_job_status['running']} ({overall_job_status['running_percent']:.1f}%)")
+    print(f"Queued: {overall_job_status['queued']}")
+    print(f"Held: {overall_job_status['held']}")
+    if overall_job_status['other'] > 0:
+        print(f"Other states: {overall_job_status['other']}")
+    
+    print("\n=== YOUR RESOURCE USAGE ===")
+    if user_stats and user_stats['total_jobs'] > 0:
+        # print(f"User: {current_user_real_name}")
+        job_status = user_stats['job_status']
+        print(f"Jobs: {job_status['total']} total ({job_status['running']} running, {job_status['queued']} queued, {job_status['held']} held, {job_status['running_percent']:.1f}% running)")
+        print(f"Total CPU time: {format_time_hours(user_stats['total_cpu_seconds'])}")
+        print(f"Total memory usage: {user_stats['total_memory_gb']:.2f} GB")
+    else:
+        print(f"No active jobs found for user: {current_user_real_name}")
+    
+    print("\n=== MICROBIOME GROUP USAGE ===")
+    if group_stats and group_stats['total_jobs'] > 0:
+        # Get real names for group members
+        # real_names = [f"{get_real_name(member)} ({member})" for member in microbiome_members]
+        # print(f"Group members: {', '.join(real_names)}")
+        job_status = group_stats['job_status']
+        print(f"Jobs: {job_status['total']} total ({job_status['running']} running, {job_status['queued']} queued, {job_status['held']} held, {job_status['running_percent']:.1f}% running)")
+        print(f"Total CPU time: {format_time_hours(group_stats['total_cpu_seconds'])}")
+        print(f"Total memory usage: {group_stats['total_memory_gb']:.2f} GB")
+        
+        # Calculate individual stats for group members
+        member_stats = {}
+        for member in microbiome_members:
+            member_jobs = [job for job in jobs if job['user'] == member]
+            if member_jobs:
+                member_job_status = get_job_status_counts(member_jobs)
+                cpu_seconds = sum(job['cpu_usage'] for job in member_jobs)
+                mem_kb = sum(job['mem_usage'] for job in member_jobs)
+                # Calculate score using cpu*8+ram where cpu is in hours and ram in GB
+                score = (cpu_seconds / 3600) * 8 + (mem_kb / (1024 * 1024))
+                real_name = get_real_name(member)
+                member_stats[member] = {
+                    'real_name': real_name,
+                    'jobs': member_job_status,
+                    'cpu_seconds': cpu_seconds,
+                    'mem_kb': mem_kb,
+                    'score': score
+                }
+        
+        # Print top users from microbiome group by score
+        # print("\n=== TOP MICROBIOME GROUP USERS BY RESOURCE USAGE ===")
+        # print("(Ranked by score: CPU hours × 8 + RAM GB)")
+        if member_stats:
+            print()
+            top_users = sorted(member_stats.items(), key=lambda x: x[1]['score'], reverse=True)
+            for i, (username, stats) in enumerate(top_users, 1):
+                job_status = stats['jobs']
+                print(f"{i}. {stats['real_name']}: "#Score: {stats['score']:.2f}, "
+                      f"CPU: {format_time_hours(stats['cpu_seconds'])}, "
+                      f"RAM: {stats['mem_kb']/(1024*1024):.2f} GB, "
+                      f"Jobs: {job_status['total']} ({job_status['running_percent']:.1f}% running)")
+        else:
+            print("No active jobs found for microbiome group members")
+    else:
+        print("No active jobs found for microbiome group members")
+
+if __name__ == "__main__":
+    main()
