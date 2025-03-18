@@ -323,20 +323,21 @@ def calculate_user_stats(jobs, user=None, group_members=None):
         'eta': eta,
     }
 
-def format_time_hours(seconds):
+def format_time_hours(seconds, descriptor=""):
     """Format seconds into hours, days, months, or years."""
     hours = seconds / 3600
+    descriptor = f" {descriptor}" if descriptor else ""
     if hours >= 8760:  # 1 year = 8760 hours
         years = hours / 8760
-        return f"{years:.2f} years"
+        return f"{years:.2f}{descriptor} years"
     elif hours >= 730:  # 1 month = 730 hours (approx)
         months = hours / 730
-        return f"{months:.2f} months"
+        return f"{months:.2f}{descriptor} months"
     elif hours >= 24:
         days = hours / 24
-        return f"{days:.2f} days"
+        return f"{days:.2f}{descriptor} days"
     else:
-        return f"{hours:.2f} hours"
+        return f"{hours:.2f}{descriptor} hours"
 
 def create_ascii_bar(percentage, width=40):
     """Create an ASCII progress bar with color based on percentage."""
@@ -437,9 +438,6 @@ def main():
         print(f"Jobs: {job_status['running']} of {job_status['total']} running")
         print(f"Run:   {create_ascii_bar(job_status['running_percent'])}")
 
-        if job_status['held'] > 0:
-            print(f"\nJobs held: {job_status['held']} !!")
-
         # print(f"\nJobs: {job_status['total']} total ({job_status['running']} running, {job_status['queued']} queued, {job_status['held']} held, {job_status['running_percent']:.1f}% running)")
         # print(f"Requested memory usage: {group_stats['total_memory_gb']:.2f} GB")
         # if group_stats['total_gpus'] > 0:
@@ -474,11 +472,11 @@ def main():
             top_users = sorted(member_stats.items(), key=lambda x: x[1]['score'], reverse=True)
             for i, (username, stats) in enumerate(top_users, 1):
                 job_status = stats['jobs']
-                gpu_info = f"GPUs: {stats['gpu_count']}, " if stats['gpu_count'] > 0 else ""
+                gpu_info = f"{stats['gpu_count']} GPUs, " if stats['gpu_count'] > 0 else ""
                 print(f"{i}. {stats['real_name']}: "#Score: {stats['score']:.2f}, "
-                      f"CPU: {format_time_hours(stats['cpu_seconds'])}, "
+                      f"{format_time_hours(stats['cpu_seconds'], 'CPU')}, "
                       f"{gpu_info}"
-                      f"Jobs: {job_status['total']} ({job_status['running_percent']:.1f}% running)")
+                      f"{job_status['total']} jobs ({job_status['running_percent']:.1f}% running)")
         else:
             print("No active jobs found for microbiome group members")
     else:
