@@ -126,7 +126,7 @@ def parse_qstat():
             current_job['state'] = state_match.group(1)
             
         # Match resource usage
-        if 'resources_used' in line:
+        if 'resources_used' in line or 'Resource_List' in line:
             # CPU time - not right since e.g. not shown for queued jobs
             # cpu_match = re.search(r'resources_used.cput = (\d+):(\d+):(\d+)', line)
             # if cpu_match:
@@ -152,18 +152,34 @@ def parse_qstat():
                 else:
                     raise Exception("Unknown memory unit from line: " + line)
                 
-            # GPU usage (assuming it's tracked as ngpus)
-            gpu_match = re.search(r'resources_used.ngpus = (\d+)', line)
+            # GPU
+            gpu_match = re.search(r'Resource_List.ngpus = (\d+)', line)
             if gpu_match:
-                current_job['gpu_usage'] = int(gpu_match.group(1))
+                current_job['ngpus'] = int(gpu_match.group(1))
 
             # walltime
             walltime_match = re.search(r'resources_used.walltime = (\d+):(\d+):(\d+)', line)
             if walltime_match:
                 h, m, s = map(int, walltime_match.groups())
-                current_job['walltime'] = h * 3600 + m * 60 + s
+                current_job['walltime_used'] = h * 3600 + m * 60 + s
+
+            # Requested walltime
+            # if 'walltime' in line:
+            #     import IPython; IPython.embed()
+            walltime_match = re.search(r'Resource_List.walltime = (\d+):(\d+):(\d+)', line)
+            if walltime_match:
+                h, m, s = map(int, walltime_match.groups())
+                requested_walltime = h * 3600 + m * 60 + s
+                # Deduct the time already used, if already running
+                if 'walltime_used' in current_job:
+                    current_job['walltime'] = requested_walltime - current_job['walltime_used']
+                else:
+                    current_job['walltime'] = requested_walltime
                 # The true cpu time ncpus * walltime
-                current_job['cpu_usage'] = current_job['ncpus'] * current_job['walltime']
+                current_job['cpu_usage_remaining'] = current_job['ncpus'] * current_job['walltime']
+                # gpus
+                if 'ngpus' in current_job:
+                    current_job['gpu_usage_remaining'] = current_job['ngpus'] * current_job['walltime']
     
     # Add the last job
     if current_job:
@@ -276,7 +292,7 @@ def calculate_user_stats(jobs, user=None, group_members=None):
     
     job_status = get_job_status_counts(user_jobs)
     total_jobs = len(user_jobs)
-    total_cpu = sum(job['cpu_usage'] for job in user_jobs)
+    total_cpu = sum(job['cpu_usage_remaining'] for job in user_jobs)
     total_mem = sum(job['mem_usage'] for job in user_jobs)
     total_gpu = sum(job['gpu_usage'] for job in user_jobs)
     
@@ -294,9 +310,15 @@ def calculate_user_stats(jobs, user=None, group_members=None):
     }
 
 def format_time_hours(seconds):
-    """Format seconds into hours or days."""
+    """Format seconds into hours, days, months, or years."""
     hours = seconds / 3600
-    if hours >= 24:
+    if hours >= 8760:  # 1 year = 8760 hours
+        years = hours / 8760
+        return f"{years:.2f} years"
+    elif hours >= 730:  # 1 month = 730 hours (approx)
+        months = hours / 730
+        return f"{months:.2f} months"
+    elif hours >= 24:
         days = hours / 24
         return f"{days:.2f} days"
     else:
@@ -352,32 +374,35 @@ def main():
     print("\n=== CLUSTER UTILIZATION SUMMARY ===")
     
     # ASCII art utilization bars
-    print(f"CPU: {create_ascii_bar(cluster_stats['cpu_utilization'])}")
-    print(f"RAM: {create_ascii_bar(cluster_stats['memory_utilization'])}")
+    print(f"CPU:   {create_ascii_bar(cluster_stats['cpu_utilization'])}")
+    print(f"RAM:   {create_ascii_bar(cluster_stats['memory_utilization'])}")
     if cluster_stats['total_gpus'] > 0:
-        print(f"GPU: {create_ascii_bar(cluster_stats['gpu_utilization'])}")
+        print(f"GPU:   {create_ascii_bar(cluster_stats['gpu_utilization'])}")
+    print(f'Nodes: {create_ascii_bar(cluster_stats["active_nodes"]/cluster_stats["total_nodes"]*100)}')
+    print()
     
-    print(f"\nTotal nodes: {cluster_stats['total_nodes']}")
-    print(f"Active nodes: {cluster_stats['active_nodes']} ({cluster_stats['active_nodes']/cluster_stats['total_nodes']*100:.1f}%)")
-    print(f"CPU utilization: {cluster_stats['cpu_utilization']:.1f}%")
-    print(f"Memory utilization: {cluster_stats['memory_utilization']:.1f}%")
-    if cluster_stats['total_gpus'] > 0:
-        print(f"GPU utilization: {cluster_stats['gpu_utilization']:.1f}%")
+    # print(f"\nTotal nodes: {cluster_stats['total_nodes']}")
+    # print(f"Active nodes: {cluster_stats['active_nodes']} ({cluster_stats['active_nodes']/cluster_stats['total_nodes']*100:.1f}%)")
+    # print(f"CPU utilization: {cluster_stats['cpu_utilization']:.1f}%")
+    # print(f"Memory utilization: {cluster_stats['memory_utilization']:.1f}%")
+    # if cluster_stats['total_gpus'] > 0:
+    #     print(f"GPU utilization: {cluster_stats['gpu_utilization']:.1f}%")
     
-    print(f"Nodes with high CPU (>80%): {cluster_stats['high_cpu_nodes']} ({cluster_stats['high_cpu_percentage']:.1f}%)")
-    print(f"Nodes with high RAM (>80%): {cluster_stats['high_ram_nodes']} ({cluster_stats['high_ram_percentage']:.1f}%)")
-    if cluster_stats['total_gpus'] > 0:
-        print(f"Nodes with high GPU (>80%): {cluster_stats['high_gpu_nodes']} ({cluster_stats['high_gpu_percentage']:.1f}%)")
+    # print(f"Nodes with high CPU (>80%): {cluster_stats['high_cpu_nodes']} ({cluster_stats['high_cpu_percentage']:.1f}%)")
+    # print(f"Nodes with high RAM (>80%): {cluster_stats['high_ram_nodes']} ({cluster_stats['high_ram_percentage']:.1f}%)")
+    # if cluster_stats['total_gpus'] > 0:
+    #     print(f"Nodes with high GPU (>80%): {cluster_stats['high_gpu_nodes']} ({cluster_stats['high_gpu_percentage']:.1f}%)")
     
-    print("\n=== JOB STATUS SUMMARY ===")
-    print(f"Total jobs: {overall_job_status['total']}")
-    print(f"Running: {overall_job_status['running']} ({overall_job_status['running_percent']:.1f}%)")
-    print(f"Queued: {overall_job_status['queued']}")
-    print(f"Held: {overall_job_status['held']}")
-    if overall_job_status['other'] > 0:
-        print(f"Other states: {overall_job_status['other']}")
+    # print("\n=== JOB STATUS SUMMARY ===")
+    print(f"Total jobs: {overall_job_status['total']} ")
+    print(f"Run:   {create_ascii_bar(overall_job_status['running_percent'])}")
+    # print(f"Running: {overall_job_status['running']} ({overall_job_status['running_percent']:.1f}%)")
+    # print(f"Queued: {overall_job_status['queued']}")
+    # print(f"Held: {overall_job_status['held']}")
+    # if overall_job_status['other'] > 0:
+    #     print(f"Other states: {overall_job_status['other']}")
     
-    print("\n=== YOUR RESOURCE USAGE ===")
+    print("\n=== YOU ===")
     if user_stats and user_stats['total_jobs'] > 0:
         job_status = user_stats['job_status']
         print(f"Jobs: {job_status['total']} total ({job_status['running']} running, {job_status['queued']} queued, {job_status['held']} held, {job_status['running_percent']:.1f}% running)")
@@ -388,7 +413,7 @@ def main():
     else:
         print(f"No active jobs found for user: {current_user_real_name}")
     
-    print("\n=== MICROBIOME GROUP USAGE ===")
+    print("\n=== CMR ===")
     if group_stats and group_stats['total_jobs'] > 0:
         # Calculate the fraction of cluster resources currently being used by the microbiome group
         # For running jobs, not the total jobs
@@ -403,13 +428,13 @@ def main():
         microbiome_mem_percent = (microbiome_used_mem / (1024 * 1024)) / cluster_stats['total_memory_gb'] * 100
         
         # Calculate current GPU usage percentage (relative to total cluster GPUs)
-        microbiome_used_gpu = sum(job['gpu_usage'] for job in microbiome_running_jobs)
+        microbiome_used_gpu = sum(job['ngpus'] for job in microbiome_running_jobs)
         microbiome_gpu_percent = microbiome_used_gpu / cluster_stats['total_gpus'] * 100 if cluster_stats['total_gpus'] > 0 else 0
         
-        print(f"CPU: {create_ascii_bar(microbiome_cpu_percent)}")
-        print(f"RAM: {create_ascii_bar(microbiome_mem_percent)}")
+        print(f"CPU:   {create_ascii_bar(microbiome_cpu_percent)}")
+        print(f"RAM:   {create_ascii_bar(microbiome_mem_percent)}")
         if cluster_stats['total_gpus'] > 0 and microbiome_used_gpu > 0:
-            print(f"GPU: {create_ascii_bar(microbiome_gpu_percent)}")
+            print(f"GPU:   {create_ascii_bar(microbiome_gpu_percent)}")
         
         job_status = group_stats['job_status']
         print(f"\nJobs: {job_status['total']} total ({job_status['running']} running, {job_status['queued']} queued, {job_status['held']} held, {job_status['running_percent']:.1f}% running)")
@@ -424,11 +449,12 @@ def main():
             member_jobs = [job for job in jobs if job['user'] == member]
             if member_jobs:
                 member_job_status = get_job_status_counts(member_jobs)
-                cpu_seconds = sum(job['cpu_usage'] for job in member_jobs)
+                cpu_seconds = sum(job['cpu_usage_remaining'] for job in member_jobs)
                 mem_kb = sum(job['mem_usage'] for job in member_jobs)
-                gpu_count = sum(job['gpu_usage'] for job in member_jobs)
+                mem_kb_total = sum(job['mem_usage'] * job['walltime'] for job in member_jobs)
+                gpu_count = sum(job['gpu_usage_remaining'] for job in member_jobs)
                 # Calculate score using cpu*8+ram where cpu is in hours and ram in GB
-                score = (cpu_seconds / 3600) * 8 + (mem_kb / (1024 * 1024)) + (gpu_count * 10)
+                score = (cpu_seconds / 3600) * 8 + (mem_kb_total / (1024 * 1024)) + (gpu_count * 10)
                 real_name = get_real_name(member)
                 member_stats[member] = {
                     'real_name': real_name,
@@ -446,7 +472,7 @@ def main():
             for i, (username, stats) in enumerate(top_users, 1):
                 job_status = stats['jobs']
                 gpu_info = f", GPUs: {stats['gpu_count']}" if stats['gpu_count'] > 0 else ""
-                print(f"{i}. {stats['real_name']}: Score: {stats['score']:.2f}, "
+                print(f"{i}. {stats['real_name']}: "#Score: {stats['score']:.2f}, "
                       f"CPU: {format_time_hours(stats['cpu_seconds'])}, "
                       f"RAM: {stats['mem_kb']/(1024*1024):.2f} GB{gpu_info}, "
                       f"Jobs: {job_status['total']} ({job_status['running_percent']:.1f}% running)")
@@ -454,6 +480,7 @@ def main():
             print("No active jobs found for microbiome group members")
     else:
         print("No active jobs found for microbiome group members")
+    print()
 
 if __name__ == "__main__":
     main()
