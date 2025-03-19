@@ -446,6 +446,8 @@ def main():
         # Calculate individual stats for group members
         member_stats = {}
         for member in microbiome_members:
+            if member in ['Vicki Thomson']: # skip admins
+                continue
             member_jobs = [job for job in jobs if job['user'] == member]
             if member_jobs:
                 member_job_status = get_job_status_counts(member_jobs)
@@ -513,6 +515,10 @@ def main():
     # print(f"Held: {overall_job_status['held']}")
     # if overall_job_status['other'] > 0:
     #     print(f"Other states: {overall_job_status['other']}")
+
+    # Num cpus, total ram, gpus
+    ram_tb = cluster_stats['total_memory_gb'] / 1024
+    print(f"\nTotal {cluster_stats['total_cpu_cores']} CPUs, {ram_tb:.1f} TB RAM, {cluster_stats['total_gpus']} GPUs")
 
     print()
 
