@@ -380,6 +380,10 @@ def main():
     
     # Get microbiome group members
     microbiome_members = get_unix_group_members("microbiome")
+    # skip admins
+    microbiome_members = [member for member in microbiome_members if member not in [
+        'thomsonv',
+    ]]
     
     # Calculate user stats
     user_stats = calculate_user_stats(jobs, user=current_user)
@@ -446,8 +450,6 @@ def main():
         # Calculate individual stats for group members
         member_stats = {}
         for member in microbiome_members:
-            if member in ['Vicki Thomson']: # skip admins
-                continue
             member_jobs = [job for job in jobs if job['user'] == member]
             if member_jobs:
                 member_job_status = get_job_status_counts(member_jobs)
