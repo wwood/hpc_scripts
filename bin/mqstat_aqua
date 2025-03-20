@@ -114,6 +114,11 @@ def parse_qstat():
             
         if not current_job:
             continue
+
+        # Match queue
+        queue_match = re.search(r'queue = (.+)', line)
+        if queue_match:
+            current_job['queue'] = queue_match.group(1)
             
         # Match job owner
         owner_match = re.search(r'Job_Owner = (.+)@', line)
@@ -137,6 +142,11 @@ def parse_qstat():
             cpu_match = re.search(r'Resource_List.ncpus = (\d+)', line)
             if cpu_match:
                 current_job['ncpus'] = int(cpu_match.group(1))
+
+            # CPU percentage
+            cpu_match = re.search(r'resources_used.cpupercent = (\d+)', line)
+            if cpu_match:
+                current_job['cpupercent'] = int(cpu_match.group(1))
                 
             # Memory usage
             if 'resources_used.mem' in line:
@@ -164,8 +174,6 @@ def parse_qstat():
                 current_job['walltime_used'] = h * 3600 + m * 60 + s
 
             # Requested walltime
-            # if 'walltime' in line:
-            #     import IPython; IPython.embed()
             walltime_match = re.search(r'Resource_List.walltime = (\d+):(\d+):(\d+)', line)
             if walltime_match:
                 h, m, s = map(int, walltime_match.groups())
@@ -281,8 +289,10 @@ def calculate_cluster_stats(nodes):
         'gpu_utilization': (used_gpus / total_gpus * 100) if total_gpus else 0
     }
 
-def calculate_user_stats(jobs, user=None, group_members=None):
+def calculate_user_stats(jobs, user=None, group_members=None, ignore_interactive=False):
     """Calculate statistics for a specific user or group."""
+    if ignore_interactive:
+        jobs = [job for job in jobs if not job['queue'] in ('cpu_inter_exec','gpu_inter_exec')]
     if user:
         user_jobs = [job for job in jobs if job['user'] == user]
     elif group_members:
@@ -300,6 +310,11 @@ def calculate_user_stats(jobs, user=None, group_members=None):
     total_ncpus = sum(job['ncpus'] for job in user_jobs)
     total_ngpus = sum(job['ngpus'] for job in user_jobs)
     total_walltime = sum(job['walltime'] for job in user_jobs)
+
+    # already a %
+    # Sometimes get R but no 'cpupercent' key, I guess they are just starting?
+    running_cpu_util_total = sum(job['cpupercent'] for job in user_jobs if job['state'] == 'R' and 'cpupercent' in job)
+    running_cpu_utilisation = running_cpu_util_total / running_cpu if len(user_jobs) > 0 else 0
 
     # speed is roughly running cpus/ Total is cpu_usage_remaining
     eta = total_cpu / running_cpu if running_cpu > 0 else 0
@@ -321,41 +336,66 @@ def calculate_user_stats(jobs, user=None, group_members=None):
         'total_ngpus': total_ngpus,
         'total_walltime': total_walltime,
         'eta': eta,
+        'running_cpu_utilisation': running_cpu_utilisation,
     }
 
 def format_time_hours(seconds, descriptor=""):
-    """Format seconds into hours, days, months, or years."""
+    """Format seconds into hours, days, months, years or millenia."""
     hours = seconds / 3600
     descriptor = f" {descriptor}" if descriptor else ""
-    if hours >= 8760:  # 1 year = 8760 hours
+    if hours >= 876000:  # 1 millenia = 876000 hours
+        millenia = hours / 876000
+        return f"{millenia:.1f}{descriptor} millenia"
+    elif hours >= 8760:  # 1 year = 8760 hours
         years = hours / 8760
-        return f"{years:.2f}{descriptor} years"
+        return f"{years:.1f}{descriptor} years"
     elif hours >= 730:  # 1 month = 730 hours (approx)
         months = hours / 730
-        return f"{months:.2f}{descriptor} months"
+        return f"{months:.1f}{descriptor} months"
     elif hours >= 24:
         days = hours / 24
-        return f"{days:.2f}{descriptor} days"
+        return f"{days:.1f}{descriptor} days"
     else:
-        return f"{hours:.2f}{descriptor} hours"
+        return f"{hours:.1f}{descriptor} hours"
 
-def create_ascii_bar(percentage, width=40):
+def create_ascii_bar(percentage, width=40, reverse=False, colour_text=None):
     """Create an ASCII progress bar with color based on percentage."""
     filled_width = int(percentage / 100 * width)
     empty_width = width - filled_width
     
-    if percentage < 50:
-        color = Colors.GREEN
-    elif percentage < 80:
-        color = Colors.YELLOW
+    if reverse:
+        if percentage < 40:
+            color = Colors.RED
+        elif percentage < 70:
+            color = Colors.YELLOW
+        else:
+            color = Colors.GREEN
     else:
-        color = Colors.RED
+        if percentage < 50:
+            color = Colors.GREEN
+        elif percentage < 80:
+            color = Colors.YELLOW
+        else:
+            color = Colors.RED
+
+    bar = f"{color}{'█' * filled_width}{Colors.ENDC}{'░' * empty_width} {percentage:.1f}%"
+    if colour_text:
+        bar = coloured_text(colour_text, color) + bar
     
-    return f"{color}{'█' * filled_width}{Colors.ENDC}{'░' * empty_width} {percentage:.1f}%"
+    return bar
+
+def coloured_text(text, color):
+    """Apply color to text."""
+    return f"{color}{text}{Colors.ENDC}"
 
 def main():
-    # Get current username
-    current_user = os.getlogin()
+    # parse -u option from args
+    if len(sys.argv) > 1 and sys.argv[1] == '-u':
+        current_user = sys.argv[2]
+    else:
+        # Get current username
+        current_user = os.getlogin()
+
     current_user_real_name = get_real_name(current_user)
     
     # Get node data
@@ -386,7 +426,7 @@ def main():
     ]]
     
     # Calculate user stats
-    user_stats = calculate_user_stats(jobs, user=current_user)
+    user_stats = calculate_user_stats(jobs, user=current_user, ignore_interactive=True)
     group_stats = calculate_user_stats(jobs, group_members=microbiome_members)
     
     print("\n=== YOU ===")
@@ -398,7 +438,9 @@ def main():
         print(f"CPU hours remaining: {format_time_hours(user_stats['total_cpu_seconds'])}")
         print()
         print(f"Jobs: {job_status['running']} of {job_status['total']} running")
-        print(f"Run:   {create_ascii_bar(job_status['running_percent'])}")
+        # print(f"Run:   {create_ascii_bar(job_status['running_percent'], reverse=True)}")
+        print(f"{create_ascii_bar(job_status['running_percent'], reverse=True, colour_text='Run:   ')}")
+        print(f"{create_ascii_bar(user_stats['running_cpu_utilisation'], reverse=True, colour_text='Util:  ')}")
 
         if job_status['held'] > 0:
             print(f"Jobs held: {job_status['held']} !!")
@@ -411,7 +453,7 @@ def main():
         # if user_stats['total_gpus'] > 0:
         #     print(f"Total GPU usage: {user_stats['total_gpus']} GPUs")
     else:
-        print(f"No active jobs found for user: {current_user_real_name}")
+        print(f"No batch jobs found for user: {current_user_real_name}")
     
     print("\n\n=== CMR ===")
     if group_stats and group_stats['total_jobs'] > 0:
@@ -436,6 +478,7 @@ def main():
         if cluster_stats['total_gpus'] > 0 and microbiome_used_gpu > 0:
             print(f"GPU:   {create_ascii_bar(microbiome_gpu_percent)}")
         print(f"Requested CPU hours: {format_time_hours(group_stats['total_cpu_seconds'])}")
+        print(f"{create_ascii_bar(group_stats['running_cpu_utilisation'], reverse=True, colour_text='Util:  ')}")
         
         job_status = group_stats['job_status']
         print()
@@ -450,7 +493,7 @@ def main():
         # Calculate individual stats for group members
         member_stats = {}
         for member in microbiome_members:
-            member_jobs = [job for job in jobs if job['user'] == member]
+            member_jobs = [job for job in jobs if job['user'] == member and job['queue'] not in ('cpu_inter_exec','gpu_inter_exec')]
             if member_jobs:
                 member_job_status = get_job_status_counts(member_jobs)
                 cpu_seconds = sum(job['cpu_usage_remaining'] for job in member_jobs)
@@ -472,8 +515,8 @@ def main():
         
         # Print top users from microbiome group by score
         if member_stats:
-            print("")  # Just a newline before top users
-            top_users = sorted(member_stats.items(), key=lambda x: x[1]['score'], reverse=True)
+            print("\nBatch job scoreboard:")  # Just a newline before top users
+            top_users = sorted(member_stats.items(), key=lambda x: x[1]['score'], reverse=True, )[:5]
             for i, (username, stats) in enumerate(top_users, 1):
                 job_status = stats['jobs']
                 gpu_info = f"{stats['gpu_count']} GPUs, " if stats['gpu_count'] > 0 else ""
