@@ -314,7 +314,7 @@ def calculate_user_stats(jobs, user=None, group_members=None, ignore_interactive
     # already a %
     # Sometimes get R but no 'cpupercent' key, I guess they are just starting?
     running_cpu_util_total = sum(job['cpupercent'] for job in user_jobs if job['state'] == 'R' and 'cpupercent' in job)
-    running_cpu_utilisation = running_cpu_util_total / running_cpu if len(user_jobs) > 0 else 0
+    running_cpu_utilisation = running_cpu_util_total / running_cpu if len(user_jobs) > 0 and running_cpu > 0 else 0
 
     # speed is roughly running cpus/ Total is cpu_usage_remaining
     eta = total_cpu / running_cpu if running_cpu > 0 else 0
