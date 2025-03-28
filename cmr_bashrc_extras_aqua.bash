@@ -20,4 +20,4 @@ if ([[ ${PBS_ENVIRONMENT} == "PBS_INTERACTIVE" ]] || [[ ${HOSTNAME} == "cpu1n001
 fi
 
 # Add mqinteractive as an alias, so that the history is saved before running mqinteractive
-alias mqinteractive='history -a; mqinteractive-real'
+alias mqinteractive='history -a; real-mqinteractive'
