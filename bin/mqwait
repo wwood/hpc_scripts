@@ -1,6 +1,4 @@
-#!/usr/bin/env python3.4
-
-# Must be python3.4-compatible since that is what is on the lyra base
+#!/usr/bin/env python3
 
 # Script to more easily submit jobs to the QUT HPC queuing system
 
@@ -104,9 +102,9 @@ class PbsJobInfo:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='''
       _ __ ___   __ ___      ____ _(_) |_
-     | '_ ` _ \ / _` \ \ /\ / / _` | | __|
-     | | | | | | (_| |\ V  V / (_| | | |_
-     |_| |_| |_|\__, | \_/\_/ \__,_|_|\__|
+     | '_ ` _ \\ / _` \\ \\ /\\ / / _` | | __|
+     | | | | | | (_| |\\ V  V / (_| | | |_
+     |_| |_| |_|\\__, | \\_/\\_/ \\__,_|_|\\__|
                    |_|
 
     Typing 'mqwait' will email you once all your currently queued jobs finish.
