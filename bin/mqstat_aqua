@@ -93,6 +93,78 @@ def parse_pbsnodeinfo():
     
     return nodes
 
+def parse_pbsnodes_output():
+    """Parse the output of `pbsnodes -a` into structured resource usage data."""
+    output = run_command("pbsnodes -a")
+    if not output:
+        raise Exception("Failed to run pbsnodes -a")
+    nodes = []
+    current_node = {}
+    node_name = None
+
+    for line in output.splitlines():
+        if not line.strip():  # empty line signifies possible end of a node block
+            if current_node and node_name:
+                nodes.append(current_node)
+                current_node = {}
+                node_name = None
+            continue
+
+        if not line.startswith(" "):  # new node
+            if current_node and node_name:
+                nodes.append(current_node)
+                current_node = {}
+            node_name = line.strip()
+            current_node["name"] = node_name
+            current_node["used_cpu"] = 0
+            current_node["total_cpu"] = 0
+            current_node["used_mem"] = 0
+            current_node["total_mem"] = 0
+            current_node["used_gpu"] = 0
+            current_node["total_gpu"] = 0
+            current_node["state"] = "unknown"
+            continue
+
+        line = line.strip()
+        if line.startswith("resources_available.ncpus"):
+            current_node["total_cpu"] = int(line.split("=")[-1].strip())
+        elif line.startswith("resources_assigned.ncpus"):
+            current_node["used_cpu"] = int(line.split("=")[-1].strip())
+        elif line.startswith("resources_available.mem"):
+            kb = int(line.split("=")[-1].strip().replace("kb", ""))
+            current_node["total_mem"] = kb // (1024 * 1024)  # convert to GB
+        elif line.startswith("resources_assigned.mem"):
+            kb = int(line.split("=")[-1].strip().replace("kb", ""))
+            current_node["used_mem"] = kb // (1024 * 1024)  # convert to GB
+        elif line.startswith("resources_available.ngpus"):
+            current_node["total_gpu"] = int(line.split("=")[-1].strip())
+        elif line.startswith("resources_assigned.ngpus"):
+            current_node["used_gpu"] = int(line.split("=")[-1].strip())
+        elif line.startswith("state"):
+            current_node["state"] = line.split("=")[-1].strip()
+
+    # Append last node if needed
+    if current_node and node_name:
+        nodes.append(current_node)
+
+    # Post-processing for percentages
+    for node in nodes:
+        total_cpu = node["total_cpu"]
+        total_mem = node["total_mem"]
+        total_gpu = node["total_gpu"]
+        used_cpu = node["used_cpu"]
+        used_mem = node["used_mem"]
+        used_gpu = node["used_gpu"]
+
+        node["cpu_usage"] = (used_cpu / total_cpu * 100) if total_cpu else 0
+        node["ram_usage"] = (used_mem / total_mem * 100) if total_mem else 0
+        node["gpu_usage"] = (used_gpu / total_gpu * 100) if total_gpu else 0
+
+        # Derive state
+        node["state"] = "free" if used_cpu == 0 else "job-busy"
+
+    return nodes
+
 def parse_qstat():
     """Parse qstat output to get job information."""
     # Full format for detailed information
@@ -400,7 +472,7 @@ def main():
     current_user_real_name = get_real_name(current_user)
     
     # Get node data
-    nodes = parse_pbsnodeinfo()
+    nodes = parse_pbsnodes_output()
     
     if not nodes:
         print("Failed to gather node information. Check if pbsnodeinfo is available.")
