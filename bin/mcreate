@@ -97,7 +97,7 @@ if __name__ == '__main__':
         print('Latest version: ' + version)
     
     else:
-        conda_env_path = run("conda config --show envs_dirs | sed -n 2p | sed 's/  - //;s/$/\//'").decode().rstrip()            
+        conda_env_path = run("conda config --show envs_dirs | sed -n 2p | sed 's/  - //;s/$/\\//'").decode().rstrip()
         version = str(run(("{} search {} | awk '{{print $2}}' | tail -n1").format(installer, package)).decode()).rstrip()
         environment_name = package + '-v' + version
         
