@@ -381,7 +381,7 @@ Example usage:
     parser.add_argument('--chunk-size',type=int,dest='chunk_size', help='Number of commands (from --command-file) per a chunk ')
     parser.add_argument('--prelude', help='Code from this file will be run before each chunk')
     temp_data_group = parser.add_mutually_exclusive_group()
-    temp_data_group.add_argument('--scratch-data', dest='scratch_data', nargs='+', help='Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs. Use /scratch/cmr_mqsub/\$PBS_JOBID to refer to the location.')
+    temp_data_group.add_argument('--scratch-data', dest='scratch_data', nargs='+', help='Data to be copied to a scratch space prior to running the main command(s). Useful for databases used in large chunks of jobs. Use \$MSCRATCH to refer to the location.')
     temp_data_group.add_argument('--tmp-data', dest='tmp_data', nargs='+', help='Data to be copied to a tmp space prior to running the main command(s). Useful for databases used in large chunks of jobs. Use \$TMPDIR to refer to the location. tmp space can fill up if you are running many in parallel, in which case use --scratch-data instead.')
     parser.add_argument('--run-tmp-dir', dest='run_tmp_dir',action='store_true', help='Executes your command(s) on the local SSD ($TMPDIR/mqsub_processing) of a node. IMPORTANT: Use absolute paths for your input files, and a relative path for your output.')
     parser.add_argument('--depend', nargs='+', help='Space separated list of ids for jobs this job should depend on.')
