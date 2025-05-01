@@ -205,9 +205,9 @@ class script_format:
     @staticmethod
     def tail(outfile):
         if args.scratch_data:
-            for dir in args.scratch_data:
-                print("\n#Delete scratch-data from /scratch",file=outfile)
-                print("if [[ -d $MSCRATCH ]]; then rm -rf $MSCRATCH || exit 1; fi",file=outfile)
+            print("\n#Delete scratch-data from /scratch",file=outfile)
+            print("if [[ $MSCRATCH != /scratch/cmr_mqsub/* ]]; then echo 'MSCRATCH is not in /scratch/cmr_mqsub'; exit 1; fi",file=outfile)
+            print("if [[ -d $MSCRATCH ]]; then rm -rf $MSCRATCH || exit 1; fi",file=outfile)
         if args.run_tmp_dir:
             working_dir = os.getcwd()
             print("\nFINAL_EXITSTATUS=$?",file=outfile)
