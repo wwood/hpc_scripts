@@ -21,3 +21,20 @@ fi
 
 # Add mqinteractive as an alias, so that the history is saved before running mqinteractive
 alias mqinteractive='history -a; real-mqinteractive'
+
+
+### Below copied from my .bashrc after running conda init
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/mnt/weka/pkg/cmr/sw/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/mnt/weka/pkg/cmr/sw/conda/etc/profile.d/conda.sh" ]; then
+        . "/mnt/weka/pkg/cmr/sw/conda/etc/profile.d/conda.sh"
+    else
+        export PATH="/mnt/weka/pkg/cmr/sw/conda/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
