@@ -6,7 +6,7 @@ mkdir -p ~/.hpc_scripts/mqinteractive_scripts
 echo "cd $PWD" > ~/.hpc_scripts/mqinteractive_scripts/latest.sh
 chmod +x ~/.hpc_scripts/mqinteractive_scripts/latest.sh
 
-# Activate the current conda env if there is one
+# Activate the current conda env if there is one. Does not work?
 if [ -n "$CONDA_PREFIX" ]; then
     echo "source activate $CONDA_PREFIX" >> ~/.hpc_scripts/mqinteractive_scripts/latest.sh
 fi
