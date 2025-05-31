@@ -124,10 +124,11 @@ rule generate_fastq:
         mem_mb=8*1024, # guesswork
         runtime=4*60 # 4 hours should be enough
     shell:
+        # Output the samtools fastq -T MM,ML flags into the fastq, so any modifications in the BAM file are preserved in the FASTQ output.
         """
         mkdir -p {output.fastq_folder}
         for bam_file in {input.bam_folder}/*.bam; do
             base=$(basename "$bam_file" .bam)
-            samtools fastq -@ {threads} "$bam_file" | pigz -p {threads} > {output.fastq_folder}/"$base".fastq.gz
+            samtools fastq -T MM,ML -@ {threads} "$bam_file" | pigz -p {threads} > {output.fastq_folder}/"$base".fastq.gz
         done
         """
