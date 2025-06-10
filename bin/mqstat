@@ -13,7 +13,6 @@ import subprocess
 import re
 import os
 import pwd
-import grp
 import sys
 from collections import defaultdict
 
@@ -36,62 +35,6 @@ def run_command(command):
         print(stderr.decode('utf-8'))
         return None
     return stdout.decode('utf-8')
-
-def parse_pbsnodeinfo():
-    """Parse pbsnodeinfo output to get node resource usage data."""
-    output = run_command("pbsnodeinfo")
-    if not output:
-        return []
-    
-    nodes = []
-    # Updated pattern to match the actual pbsnodeinfo output format
-    cpu_pattern = re.compile(r'^(\S+)\s+:.*?;\s*(\d+)\s*/\s*(\d+)\s*cpus;\s*(\d+)\s*/\s*(\d+)\s*GB')
-    # New GPU pattern that matches the format in the example
-    gpu_pattern = re.compile(r';\s*(\d+)\s*/\s*(\d+)\s*gpus')
-    
-    for line in output.splitlines():
-        # Skip header lines
-        if "Node" in line or "===" in line:
-            continue
-            
-        cpu_match = cpu_pattern.search(line)
-        if cpu_match:
-            node_name = cpu_match.group(1)
-            used_cpu = int(cpu_match.group(2))
-            total_cpu = int(cpu_match.group(3))
-            used_mem = int(cpu_match.group(4))
-            total_mem = int(cpu_match.group(5))
-            
-            # Calculate usage percentages
-            cpu_percentage = (used_cpu / total_cpu * 100) if total_cpu > 0 else 0
-            mem_percentage = (used_mem / total_mem * 100) if total_mem > 0 else 0
-            
-            # Check for GPUs - look for the gpu usage pattern
-            gpu_match = gpu_pattern.search(line)
-            used_gpu = 0
-            total_gpu = 0
-            gpu_percentage = 0
-            
-            if gpu_match:
-                used_gpu = int(gpu_match.group(1))
-                total_gpu = int(gpu_match.group(2))
-                gpu_percentage = (used_gpu / total_gpu * 100) if total_gpu > 0 else 0
-            
-            nodes.append({
-                'name': node_name,
-                'cpu_usage': cpu_percentage,
-                'ram_usage': mem_percentage,
-                'gpu_usage': gpu_percentage,
-                'used_cpu': used_cpu,
-                'total_cpu': total_cpu,
-                'used_mem': used_mem,
-                'total_mem': total_mem,
-                'used_gpu': used_gpu,
-                'total_gpu': total_gpu,
-                'state': 'free' if used_cpu == 0 else 'job-busy'
-            })
-    
-    return nodes
 
 def parse_pbsnodes_output():
     """Parse the output of `pbsnodes -a` into structured resource usage data."""
@@ -294,15 +237,6 @@ def get_job_status_counts(jobs):
         'total': total,
         'running_percent': running_percent
     }
-
-def get_unix_group_members(group_name):
-    """Get all users belonging to a Unix group."""
-    try:
-        group = grp.getgrnam(group_name)
-        return group.gr_mem
-    except KeyError:
-        print(f"Group '{group_name}' not found")
-        return []
 
 def get_real_name(username):
     """Get the real name for a username."""
