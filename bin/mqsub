@@ -161,6 +161,7 @@ class script_format:
             print('#PBS -N ' + command_name + str(chunkID) + '\n', file = outfile)
         else:
             print('#PBS -N {}'.format(jobname),file=outfile)
+        print('. /etc/bashrc',file=outfile) # Load the bashrc file
         print("cd '{}'".format(os.getcwd()), file=outfile) # cd to current directory      
         if prelude:
             print(prelude+'\n\n',file=outfile)
