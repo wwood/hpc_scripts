@@ -489,13 +489,6 @@ def main():
     # Get job data
     jobs = parse_qstat()
     
-    if not jobs:
-        print("Failed to gather job information. Check if qstat is available.")
-        return
-    
-    # Get overall job status
-    overall_job_status = get_job_status_counts(jobs)
-    
     # Get microbiome group members
     microbiome_members = get_unix_group_members("microbiome")
     # skip admins
