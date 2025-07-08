@@ -544,7 +544,7 @@ def main():
     if cluster_stats['total_gpus'] > 0 and microbiome_used_gpu > 0:
         print(f"GPU:   {create_ascii_bar(microbiome_gpu_percent)}")
 
-    print(f"Requested CPUs: {microbiome_requested_cpu:,} ({microbiome_cpu_requested_percent:.1f}%)")
+    print(f"Requested CPUs: {microbiome_requested_cpu:,} ({microbiome_cpu_requested_percent:.1f}% running)")
     print()
 
     # Calculate score for each member: cpus_running + 10 * gpus_running
