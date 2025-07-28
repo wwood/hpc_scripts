@@ -264,6 +264,9 @@ def calculate_cluster_stats(nodes):
     total_memory_gb = sum(node['total_mem'] for node in nodes)
     used_memory_gb = sum(node['used_mem'] for node in nodes)
     
+    total_cpu_only_cores = sum(node['total_cpu'] for node in nodes if node['total_gpu'] == 0)
+    used_cpu_only_cores = sum(node['used_cpu'] for node in nodes if node['total_gpu'] == 0)
+
     total_gpus = sum(node['total_gpu'] for node in nodes)
     used_gpus = sum(node['used_gpu'] for node in nodes)
     
@@ -292,6 +295,9 @@ def calculate_cluster_stats(nodes):
         'total_memory_gb': total_memory_gb,
         'used_memory_gb': used_memory_gb,
         'memory_utilization': (used_memory_gb / total_memory_gb * 100) if total_memory_gb else 0,
+        'total_cpu_only_cores': total_cpu_only_cores,
+        'used_cpu_only_cores': used_cpu_only_cores,
+        'cpu_only_utilization': (used_cpu_only_cores / total_cpu_only_cores * 100) if total_cpu_only_cores else 0,
         'total_gpus': total_gpus,
         'used_gpus': used_gpus,
         'gpu_utilization': (used_gpus / total_gpus * 100) if total_gpus else 0
@@ -577,11 +583,12 @@ def main():
     print("\n\n=== CLUSTER ===")
     
     # ASCII art utilization bars
-    print(f"CPU:   {create_ascii_bar(cluster_stats['cpu_utilization'])}")
-    print(f"RAM:   {create_ascii_bar(cluster_stats['memory_utilization'])}")
+    print(f"CPU-all:  {create_ascii_bar(cluster_stats['cpu_utilization'])}")
+    print(f"RAM-all:  {create_ascii_bar(cluster_stats['memory_utilization'])}")
     if cluster_stats['total_gpus'] > 0:
-        print(f"GPU:   {create_ascii_bar(cluster_stats['gpu_utilization'])}")
-    print(f'Nodes: {create_ascii_bar(cluster_stats["active_nodes"]/cluster_stats["total_nodes"]*100)}')
+        print(f"CPU-only: {create_ascii_bar(cluster_stats['cpu_only_utilization'])}")
+        print(f"GPU:      {create_ascii_bar(cluster_stats['gpu_utilization'])}")
+    print(f'Nodes:    {create_ascii_bar(cluster_stats["active_nodes"]/cluster_stats["total_nodes"]*100)}')
     
     # Num cpus, total ram, gpus
     ram_tb = cluster_stats['total_memory_gb'] / 1024
