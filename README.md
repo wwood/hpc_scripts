@@ -192,5 +192,45 @@ You can also check for the latest version of a package without installing:
 `mcreate <package_name> -v`
 
 
+# pixi_cmr_init
+This script initializes a pixi project with CMR-specific settings. It creates a `pixi.toml` file using `pixi init` and modifies the channels to include `bioconda` after `conda-forge`. It also creates a `.pixi` directory in a centralized location and symlinks it to the project directory.
+
+Basic usage:
+```bash
+pixi_cmr_init.py                    # Initialize in current directory
+pixi_cmr_init.py /path/to/project   # Initialize in specific directory
+pixi_cmr_init.py --dry-run          # Show what would be done without executing
+```
+
+Features:
+- Automatically adds `bioconda` channel after `conda-forge` in the channels list
+- Creates `.pixi` directory in `/pkg/cmr/<username>/pixi_dirs/<path>.pixi` for centralized storage
+- Creates a symlink from project directory to the centralized `.pixi` directory
+- Falls back to local `.pixi` directory if centralized location is not accessible
+- Warns if `.pixi` directory or symlink already exists
+- Supports dry-run mode to preview changes
+- Works with or without the `toml` Python package (uses fallback parsing if needed)
+
+Directory Structure:
+- Actual `.pixi` directory: `/pkg/cmr/<username>/pixi_dirs/<project_path>.pixi`
+- Symlink in project: `<project_directory>/.pixi -> /pkg/cmr/<username>/pixi_dirs/<project_path>.pixi`
+- Path conversion: `/home/user/project` becomes `home_user_project.pixi`
+
+Example output:
+```bash
+$ pixi_cmr_init.py /home/user/my_project
+Initializing pixi project in: /home/user/my_project
+Running 'pixi init'...
+Modified /home/user/my_project/pixi.toml to include bioconda channel
+Channels: ['conda-forge', 'bioconda']
+Created .pixi directory at /pkg/cmr/user/pixi_dirs/home_user_my_project.pixi
+Created symlink: /home/user/my_project/.pixi -> /pkg/cmr/user/pixi_dirs/home_user_my_project.pixi
+pixi_cmr_init completed successfully!
+```
+
+Fallback behavior:
+If `/pkg/cmr/<username>/pixi_dirs/` is not accessible (e.g., permissions, directory doesn't exist), the script automatically falls back to creating a local `.pixi` directory in the project folder.
+
+
 # CMR Compute Notes
 Further information can also be found in the CMR Compute Notes -  https://tinyurl.com/cmr-internal-compute
