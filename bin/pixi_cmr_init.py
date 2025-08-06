@@ -17,15 +17,6 @@ import tempfile
 from pathlib import Path
 import re
 
-# Try to import toml, fall back to manual parsing if not available
-try:
-    import toml
-    HAS_TOML = True
-except ImportError:
-    HAS_TOML = False
-    print("Warning: 'toml' package not found. Using fallback TOML parsing.")
-
-
 def run_command(cmd, cwd=None):
     """Run a shell command and return the result."""
     try:
@@ -190,10 +181,7 @@ def modify_pixi_toml_fallback(toml_path):
 def modify_pixi_toml(toml_path):
     """Modify pixi.toml to include bioconda after conda-forge in channels."""
     try:
-        if HAS_TOML:
-            channels = modify_pixi_toml_with_toml_lib(toml_path)
-        else:
-            channels = modify_pixi_toml_fallback(toml_path)
+        channels = modify_pixi_toml_fallback(toml_path)
         
         print(f"Modified {toml_path} to include bioconda channel")
         print(f"Channels: {channels}")
