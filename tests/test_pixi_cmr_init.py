@@ -84,7 +84,7 @@ class TestPixiCmrInit(unittest.TestCase):
             pixi_dir_name = f"{path_name}.pixi"
             expected_target = custom_base / username / 'pixi_dirs' / pixi_dir_name
             
-            self.assertEqual(result_path.readlink(), expected_target)
+            self.assertEqual(result_path.resolve(), expected_target)
             self.assertTrue(expected_target.exists(), "Target directory should exist")
             print(f"Symlink verified: {result_path} -> {expected_target}")
 
