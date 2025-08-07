@@ -3,9 +3,9 @@
 conda_check.py - Check and validate conda configuration for CMR HPC environment.
 
 This script checks a user's ~/.condarc file to ensure:
-1. The first element of env_dirs is within /mnt/weka
-2. The first element of pkg_dirs is within /mnt/weka
-3. ~/.conda is symlinked to /mnt/weka/pkg/cmr/[username]/.conda
+1. The first element of env_dirs is within /pkg/cmr or /mnt/weka
+2. The first element of pkg_dirs is within /pkg/cmr or /mnt/weka
+3. ~/.conda is symlinked to /pkg/cmr/[username]/.conda or /mnt/weka/pkg/cmr/[username]/.conda
 
 If any of these conditions are not met, it provides warnings and suggestions
 for fixing the configuration.
@@ -45,17 +45,18 @@ def resolve_path(path):
 
 
 def is_within_weka(path):
-    """Check if a path is within /mnt/weka (either directly or via symlink)."""
+    """Check if a path is within /mnt/weka or /pkg/cmr (either directly or via symlink)."""
     if not path:
         return False
     
-    # Check direct path
-    if str(path).startswith('/mnt/weka'):
+    # Check direct path for both /mnt/weka and /pkg/cmr
+    path_str = str(path)
+    if path_str.startswith('/mnt/weka') or path_str.startswith('/pkg/cmr'):
         return True
     
     # Check resolved path (following symlinks)
     resolved = resolve_path(path)
-    if resolved and resolved.startswith('/mnt/weka'):
+    if resolved and (resolved.startswith('/mnt/weka') or resolved.startswith('/pkg/cmr')):
         return True
     
     return False
@@ -130,7 +131,7 @@ def load_condarc(condarc_path):
 
 
 def check_env_dirs(config):
-    """Check if the first env_dirs entry is within /mnt/weka."""
+    """Check if the first env_dirs entry is within /mnt/weka or /pkg/cmr."""
     env_dirs = config.get('envs_dirs', config.get('env_dirs', []))
     
     if not env_dirs:
@@ -138,14 +139,14 @@ def check_env_dirs(config):
     
     first_env_dir = env_dirs[0]
     if is_within_weka(first_env_dir):
-        return True, f"First env_dirs entry is correctly within /mnt/weka: {first_env_dir}"
+        return True, f"First env_dirs entry is correctly within /pkg/cmr or /mnt/weka: {first_env_dir}"
     else:
         resolved = resolve_path(first_env_dir)
-        return False, f"First env_dirs entry '{first_env_dir}' (resolves to '{resolved}') is not within /mnt/weka"
+        return False, f"First env_dirs entry '{first_env_dir}' (resolves to '{resolved}') is not within /pkg/cmr or /mnt/weka"
 
 
 def check_pkg_dirs(config):
-    """Check if the first pkg_dirs entry is within /mnt/weka."""
+    """Check if the first pkg_dirs entry is within /mnt/weka or /pkg/cmr."""
     pkg_dirs = config.get('pkgs_dirs', config.get('pkg_dirs', []))
     
     if not pkg_dirs:
@@ -153,39 +154,39 @@ def check_pkg_dirs(config):
     
     first_pkg_dir = pkg_dirs[0]
     if is_within_weka(first_pkg_dir):
-        return True, f"First pkgs_dirs entry is correctly within /mnt/weka: {first_pkg_dir}"
+        return True, f"First pkgs_dirs entry is correctly within /pkg/cmr or /mnt/weka: {first_pkg_dir}"
     else:
         resolved = resolve_path(first_pkg_dir)
-        return False, f"First pkgs_dirs entry '{first_pkg_dir}' (resolves to '{resolved}') is not within /mnt/weka"
+        return False, f"First pkgs_dirs entry '{first_pkg_dir}' (resolves to '{resolved}') is not within /pkg/cmr or /mnt/weka"
 
 
 def check_conda_symlink():
-    """Check if ~/.conda is symlinked to the correct location in /mnt/weka."""
+    """Check if ~/.conda is symlinked to the correct location in /pkg/cmr or /mnt/weka."""
     username = getpass.getuser()
     home_conda = Path.home() / '.conda'
-    expected_target = f"/mnt/weka/pkg/cmr/{username}/.conda"
+    expected_target_pkg = f"/pkg/cmr/{username}/.conda"
+    expected_target_weka = f"/mnt/weka/pkg/cmr/{username}/.conda"
     
     if not home_conda.exists():
         return False, f"~/.conda does not exist"
     
     if not home_conda.is_symlink():
         resolved = resolve_path(str(home_conda))
-        if resolved and resolved.startswith('/mnt/weka'):
-            return True, f"~/.conda is within /mnt/weka (resolves to {resolved})"
+        if resolved and (resolved.startswith('/mnt/weka') or resolved.startswith('/pkg/cmr')):
+            return True, f"~/.conda is within /pkg/cmr or /mnt/weka (resolves to {resolved})"
         else:
-            return False, f"~/.conda is not a symlink to /mnt/weka (actual path: {resolved})"
+            return False, f"~/.conda is not a symlink to /pkg/cmr or /mnt/weka (actual path: {resolved})"
     
     # It's a symlink, check if it points to the right place
     actual_target = str(home_conda.resolve())
-    if actual_target == expected_target or actual_target.startswith('/mnt/weka'):
+    if actual_target in [expected_target_pkg, expected_target_weka] or actual_target.startswith('/mnt/weka') or actual_target.startswith('/pkg/cmr'):
         return True, f"~/.conda correctly symlinked to {actual_target}"
     else:
         return False, f"~/.conda symlinked to wrong location: {actual_target}"
 
 
-def generate_template_condarc():
+def generate_template_condarc(suggested_envs_dir, suggested_pkgs_dir):
     """Generate a template .condarc file with CMR-specific settings."""
-    username = getpass.getuser()
     
     template = f"""# CMR HPC conda configuration
 # Place this in ~/.condarc
@@ -196,10 +197,10 @@ channels:
   - defaults
 
 envs_dirs:
-  - /mnt/weka/pkg/cmr/{username}/conda/envs
+  - {suggested_envs_dir}
 
 pkgs_dirs:
-  - /mnt/weka/pkg/cmr/{username}/conda/pkgs
+  - {suggested_pkgs_dir}
 
 solver: libmamba
 """
@@ -210,37 +211,35 @@ def generate_fix_suggestions(env_dirs_ok, pkg_dirs_ok, conda_symlink_ok):
     """Generate suggestions for fixing conda configuration issues."""
     username = getpass.getuser()
     suggestions = []
-    
+    suggested_envs_dir = f"/pkg/cmr/{username}/conda/envs"
+    suggested_pkgs_dir = f"/pkg/cmr/{username}/conda/pkgs"
+
     step_num = 1
+    if not env_dirs_ok:
+        suggestions.append(f"{step_num}. Move the conda dir to new location")
+        suggestions.append(f"   mv ~/.conda/envs {suggested_envs_dir}")
+        step_num += 1
+
+    if not pkg_dirs_ok:
+        suggestions.append(f"{step_num}. Remove the old pkgs_dirs:")
+        suggestions.append(f"   rm -rf ~/.conda/pkgs")
+        step_num += 1
+
     if not env_dirs_ok or not pkg_dirs_ok:
         # Include template when there are config issues
         suggestions.append("Recommended .condarc template:")
         suggestions.append("-" * 40)
-        suggestions.append(generate_template_condarc())
+        suggestions.append(generate_template_condarc(suggested_envs_dir, suggested_pkgs_dir))
         suggestions.append("")
         suggestions.append(f"{step_num}. Update your ~/.condarc file with the template shown above")
         step_num += 1
-        
-        # Suggest removing old directories
-        home_conda = Path.home() / '.conda'
-        if home_conda.exists() and not conda_symlink_ok:
-            suggestions.append(f"{step_num}. Remove old conda directories:")
-            suggestions.append(f"   rm -rf ~/.conda")
-            step_num += 1
-            
-        miniconda_envs = Path.home() / 'miniconda3' / 'envs'
-        if miniconda_envs.exists():
-            suggestions.append(f"   rm -rf ~/miniconda3/envs")
-            
-        miniconda_pkgs = Path.home() / 'miniconda3' / 'pkgs'  
-        if miniconda_pkgs.exists():
-            suggestions.append(f"   rm -rf ~/miniconda3/pkgs")
-    
+
     if not conda_symlink_ok:
-        target_dir = f"/mnt/weka/pkg/cmr/{username}/.conda"
+        target_dir = f"/pkg/cmr/{username}/.conda"
         suggestions.append(f"{step_num}. Create the correct ~/.conda symlink:")
-        suggestions.append(f"   rm -rf ~/.conda")
-        suggestions.append(f"   mkdir -p /mnt/weka/pkg/cmr/{username}/.conda")
+        suggestions.append(f"   rm -rf ~/.conda/pkgs")
+        suggestions.append(f"   mkdir -p /pkg/cmr/{username}/")
+        suggestions.append(f"   mv ~/.conda {target_dir}")
         suggestions.append(f"   ln -sf {target_dir} ~/.conda")
     
     return suggestions

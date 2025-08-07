@@ -123,12 +123,12 @@ class TestCondaCheck(unittest.TestCase):
     def test_check_env_dirs_valid(self):
         """Test checking environment directories with valid configuration."""
         config = {
-            'envs_dirs': ['/mnt/weka/pkg/cmr/testuser/conda/envs', '~/miniconda3/envs']
+            'envs_dirs': ['/pkg/cmr/testuser/conda/envs', '~/miniconda3/envs']
         }
         
         is_ok, message = conda_check.check_env_dirs(config)
         self.assertTrue(is_ok)
-        self.assertIn('/mnt/weka', message)
+        self.assertIn('/pkg/cmr or /mnt/weka', message)
     
     @unittest.skipIf(conda_check is None, "Could not import conda_check module")
     def test_check_env_dirs_invalid(self):
@@ -139,7 +139,7 @@ class TestCondaCheck(unittest.TestCase):
         
         is_ok, message = conda_check.check_env_dirs(config)
         self.assertFalse(is_ok)
-        self.assertIn('not within /mnt/weka', message)
+        self.assertIn('not within /pkg/cmr or /mnt/weka', message)
     
     @unittest.skipIf(conda_check is None, "Could not import conda_check module")
     def test_check_env_dirs_missing(self):
@@ -154,12 +154,12 @@ class TestCondaCheck(unittest.TestCase):
     def test_check_pkg_dirs_valid(self):
         """Test checking package directories with valid configuration."""
         config = {
-            'pkgs_dirs': ['/mnt/weka/pkg/cmr/testuser/conda/pkgs', '~/miniconda3/pkgs']
+            'pkgs_dirs': ['/pkg/cmr/testuser/conda/pkgs', '~/miniconda3/pkgs']
         }
         
         is_ok, message = conda_check.check_pkg_dirs(config)
         self.assertTrue(is_ok)
-        self.assertIn('/mnt/weka', message)
+        self.assertIn('/pkg/cmr or /mnt/weka', message)
     
     @unittest.skipIf(conda_check is None, "Could not import conda_check module")
     def test_check_pkg_dirs_invalid(self):
@@ -170,7 +170,7 @@ class TestCondaCheck(unittest.TestCase):
         
         is_ok, message = conda_check.check_pkg_dirs(config)
         self.assertFalse(is_ok)
-        self.assertIn('not within /mnt/weka', message)
+        self.assertIn('not within /pkg/cmr or /mnt/weka', message)
     
     @unittest.skipIf(conda_check is None, "Could not import conda_check module")
     @patch('conda_check.Path.home')
@@ -189,9 +189,9 @@ class TestCondaCheck(unittest.TestCase):
         conda_link = mock_home_path / '.conda'
         conda_link.symlink_to(target_dir)
         
-        # Mock the pathlib.Path.resolve method to return a /mnt/weka path
+        # Mock the pathlib.Path.resolve method to return a /pkg/cmr path
         with patch.object(Path, 'resolve') as mock_resolve:
-            mock_resolve.return_value = Path('/mnt/weka/pkg/cmr/testuser/.conda')
+            mock_resolve.return_value = Path('/pkg/cmr/testuser/.conda')
             is_ok, message = conda_check.check_conda_symlink()
             
         self.assertTrue(is_ok, f"Expected symlink check to pass, but got: {message}")
@@ -211,11 +211,13 @@ class TestCondaCheck(unittest.TestCase):
     @unittest.skipIf(conda_check is None, "Could not import conda_check module")
     def test_generate_template_condarc(self):
         """Test generating template .condarc content."""
-        with patch('conda_check.getpass.getuser', return_value='testuser'):
-            template = conda_check.generate_template_condarc()
+        suggested_envs_dir = '/pkg/cmr/testuser/conda/envs'
+        suggested_pkgs_dir = '/pkg/cmr/testuser/conda/pkgs'
+        
+        template = conda_check.generate_template_condarc(suggested_envs_dir, suggested_pkgs_dir)
         
         self.assertIn('testuser', template)
-        self.assertIn('/mnt/weka/pkg/cmr/testuser', template)
+        self.assertIn('/pkg/cmr/testuser', template)
         self.assertIn('envs_dirs:', template)
         self.assertIn('pkgs_dirs:', template)
         self.assertIn('conda-forge', template)
@@ -240,8 +242,8 @@ class TestCondaCheck(unittest.TestCase):
         # Create a temporary .condarc with correct configuration
         with tempfile.NamedTemporaryFile(mode='w', suffix='.condarc', delete=False) as f:
             config = {
-                'envs_dirs': ['/mnt/weka/pkg/cmr/testuser/conda/envs'],
-                'pkgs_dirs': ['/mnt/weka/pkg/cmr/testuser/conda/pkgs']
+                'envs_dirs': ['/pkg/cmr/testuser/conda/envs'],
+                'pkgs_dirs': ['/pkg/cmr/testuser/conda/pkgs']
             }
             write_condarc_format(config, f)
             condarc_path = f.name
@@ -275,8 +277,8 @@ class TestCondaCheck(unittest.TestCase):
         # Create a valid config file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.condarc', delete=False) as f:
             config = {
-                'envs_dirs': ['/mnt/weka/pkg/cmr/testuser/conda/envs'],
-                'pkgs_dirs': ['/mnt/weka/pkg/cmr/testuser/conda/pkgs']
+                'envs_dirs': ['/pkg/cmr/testuser/conda/envs'],
+                'pkgs_dirs': ['/pkg/cmr/testuser/conda/pkgs']
             }
             write_condarc_format(config, f)
             condarc_path = f.name
