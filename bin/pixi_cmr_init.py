@@ -245,7 +245,9 @@ def main():
         print(f"WARNING: pixi.toml already exists at {pixi_toml_path} - not creating a new one, but continuing, trying to create .pixi directory.")
     # Also fail if pyproject.toml exists
     elif (target_dir / 'pyproject.toml').exists():
-        print(f"WARNING: pyproject.toml already exists at {target_dir / 'pyproject.toml'} - cannot initialize pixi project. Continuing, trying to create .pixi directory.")
+        print(f"WARNING: pyproject.toml already exists at {target_dir / 'pyproject.toml'} - cannot initialize pixi project.")
+        print("pyproject.toml files can be migrated by running 'pixi init' yourself. See https://pixi.sh/latest/python/pyproject_toml/ for more information.")
+        print("Continuing, trying to create .pixi directory.")
     else:
         # Run pixi init
         print("Running 'pixi init'...")
