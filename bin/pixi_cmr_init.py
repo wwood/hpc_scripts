@@ -240,9 +240,12 @@ def main():
     # Ensure target directory exists
     target_dir.mkdir(parents=True, exist_ok=True)
     
-    # Check if pixi.toml already exists
+    # Check if pixi.toml already exists.
     if pixi_toml_path.exists():
-        print(f"Warning: pixi.toml already exists at {pixi_toml_path} - not creating a new one, but continuing, trying to create .pixi directory.")
+        print(f"WARNING: pixi.toml already exists at {pixi_toml_path} - not creating a new one, but continuing, trying to create .pixi directory.")
+    # Also fail if pyproject.toml exists
+    elif (target_dir / 'pyproject.toml').exists():
+        print(f"WARNING: pyproject.toml already exists at {target_dir / 'pyproject.toml'} - cannot initialize pixi project. Continuing, trying to create .pixi directory.")
     else:
         # Run pixi init
         print("Running 'pixi init'...")
