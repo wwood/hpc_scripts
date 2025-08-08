@@ -58,9 +58,10 @@ def create_pixi_directory(target_dir, base_dir='/pkg/cmr'):
     # Check if symlink already exists
     if symlink_path.exists() or symlink_path.is_symlink():
         if symlink_path.is_symlink():
-            print(f"Warning: .pixi symlink already exists at {symlink_path} -> {symlink_path.readlink()}")
+            print(f"WARNING: .pixi symlink already exists at {symlink_path} -> {symlink_path.readlink()}")
         else:
-            print(f"Warning: .pixi directory already exists at {symlink_path}")
+            print(f"WARNING: .pixi directory already exists at {symlink_path}")
+        print("WARNING: Skipping creation of .pixi directory. If you want to migrate it, you can remove it and then rerun this script. But first, you may wish to check that .pixi/config.toml does not contain custom settings that you want to keep.")
         return symlink_path
     
     # Create the base directory structure in <base_dir>/<username>/pixi_dirs/
