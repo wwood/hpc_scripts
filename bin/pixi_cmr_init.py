@@ -241,22 +241,18 @@ def main():
     
     # Check if pixi.toml already exists
     if pixi_toml_path.exists():
-        print(f"Warning: pixi.toml already exists at {pixi_toml_path}")
-        response = input("Do you want to continue and modify it? (y/N): ")
-        if response.lower() != 'y':
-            print("Aborted.")
-            return
-    
-    # Run pixi init
-    print("Running 'pixi init'...")
-    run_command('pixi init', cwd=target_dir)
-    
-    # Modify the pixi.toml file
-    if pixi_toml_path.exists():
-        modify_pixi_toml(pixi_toml_path)
+        print(f"Warning: pixi.toml already exists at {pixi_toml_path} - not creating a new one, but continuing, trying to create .pixi directory.")
     else:
-        print(f"Error: pixi.toml was not created at {pixi_toml_path}")
-        return 1
+        # Run pixi init
+        print("Running 'pixi init'...")
+        run_command('pixi init', cwd=target_dir)
+        
+        # Modify the pixi.toml file
+        if pixi_toml_path.exists():
+            modify_pixi_toml(pixi_toml_path)
+        else:
+            print(f"Error: pixi.toml was not created at {pixi_toml_path}")
+            return 1
     
     # Create .pixi directory
     create_pixi_directory(target_dir, args.base_dir)
