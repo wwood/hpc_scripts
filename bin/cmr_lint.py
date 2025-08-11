@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-conda_check.py - Check and validate conda configuration for CMR HPC environment.
+cmr_lint.py - Check and validate conda configuration for CMR HPC environment.
 
 This script checks a user's ~/.condarc file to ensure:
 1. The first element of env_dirs is within /pkg/cmr or /mnt/weka
