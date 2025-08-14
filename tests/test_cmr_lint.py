@@ -227,7 +227,7 @@ class TestCmrLint(unittest.TestCase):
         """Test generating fix suggestions for various issues."""
         with patch('cmr_lint.getpass.getuser', return_value='testuser'):
             # Test when all checks fail
-            suggestions = cmr_lint.generate_fix_suggestions(False, False, False)
+            suggestions = cmr_lint.generate_fix_suggestions(False, False, False, False)
         
         self.assertTrue(len(suggestions) > 0)
         suggestion_text = ' '.join(suggestions)
@@ -316,6 +316,149 @@ class TestCmrLint(unittest.TestCase):
             self.assertIn('Configuration Issues Found', result.stdout)
         finally:
             os.unlink(condarc_path)
+    
+    @unittest.skipIf(cmr_lint is None, "Could not import cmr_lint module")
+    def test_check_old_qsub_logs_no_directory(self):
+        """Test qsub logs check when ~/qsub_logs doesn't exist."""
+        with patch('cmr_lint.Path.home') as mock_home:
+            mock_home.return_value = Path(self.test_dir)
+            is_ok, message = cmr_lint.check_old_qsub_logs()
+            
+        self.assertTrue(is_ok)
+        self.assertIn("No ~/qsub_logs directory found", message)
+    
+    @unittest.skipIf(cmr_lint is None, "Could not import cmr_lint module")
+    def test_check_old_qsub_logs_empty_directory(self):
+        """Test qsub logs check when ~/qsub_logs is empty."""
+        with patch('cmr_lint.Path.home') as mock_home:
+            mock_home.return_value = Path(self.test_dir)
+            qsub_logs_dir = Path(self.test_dir) / 'qsub_logs'
+            qsub_logs_dir.mkdir()
+            
+            is_ok, message = cmr_lint.check_old_qsub_logs()
+            
+        self.assertTrue(is_ok)
+        self.assertIn("No old qsub log folders found", message)
+    
+    @unittest.skipIf(cmr_lint is None, "Could not import cmr_lint module")
+    def test_check_old_qsub_logs_recent_folders(self):
+        """Test qsub logs check with only recent folders."""
+        from datetime import datetime, timedelta
+        
+        with patch('cmr_lint.Path.home') as mock_home:
+            mock_home.return_value = Path(self.test_dir)
+            qsub_logs_dir = Path(self.test_dir) / 'qsub_logs'
+            qsub_logs_dir.mkdir()
+            
+            # Create recent folders (within 3 months)
+            recent_date = datetime.now() - timedelta(days=30)
+            recent_folder = qsub_logs_dir / recent_date.strftime('%Y-%m-%d')
+            recent_folder.mkdir()
+            
+            very_recent_date = datetime.now() - timedelta(days=1)
+            very_recent_folder = qsub_logs_dir / very_recent_date.strftime('%Y-%m-%d')
+            very_recent_folder.mkdir()
+            
+            is_ok, message = cmr_lint.check_old_qsub_logs()
+            
+        self.assertTrue(is_ok)
+        self.assertIn("No old qsub log folders found", message)
+    
+    @unittest.skipIf(cmr_lint is None, "Could not import cmr_lint module")
+    def test_check_old_qsub_logs_old_folders(self):
+        """Test qsub logs check with old folders (older than 3 months)."""
+        from datetime import datetime, timedelta
+        
+        with patch('cmr_lint.Path.home') as mock_home:
+            mock_home.return_value = Path(self.test_dir)
+            qsub_logs_dir = Path(self.test_dir) / 'qsub_logs'
+            qsub_logs_dir.mkdir()
+            
+            # Create old folders (older than 3 months)
+            old_date_1 = datetime.now() - timedelta(days=120)  # 4 months
+            old_folder_1 = qsub_logs_dir / old_date_1.strftime('%Y-%m-%d')
+            old_folder_1.mkdir()
+            
+            old_date_2 = datetime.now() - timedelta(days=150)  # 5 months
+            old_folder_2 = qsub_logs_dir / old_date_2.strftime('%Y-%m-%d')
+            old_folder_2.mkdir()
+            
+            # Also create a recent folder to ensure it's not counted
+            recent_date = datetime.now() - timedelta(days=30)
+            recent_folder = qsub_logs_dir / recent_date.strftime('%Y-%m-%d')
+            recent_folder.mkdir()
+            
+            is_ok, message = cmr_lint.check_old_qsub_logs()
+            
+        self.assertFalse(is_ok)
+        self.assertIn("Found 2 old qsub log folders", message)
+        self.assertIn("oldest:", message)
+        self.assertIn("newest old:", message)
+    
+    @unittest.skipIf(cmr_lint is None, "Could not import cmr_lint module")
+    def test_check_old_qsub_logs_single_old_folder(self):
+        """Test qsub logs check with a single old folder."""
+        from datetime import datetime, timedelta
+        
+        with patch('cmr_lint.Path.home') as mock_home:
+            mock_home.return_value = Path(self.test_dir)
+            qsub_logs_dir = Path(self.test_dir) / 'qsub_logs'
+            qsub_logs_dir.mkdir()
+            
+            # Create one old folder
+            old_date = datetime.now() - timedelta(days=120)  # 4 months
+            old_folder = qsub_logs_dir / old_date.strftime('%Y-%m-%d')
+            old_folder.mkdir()
+            
+            is_ok, message = cmr_lint.check_old_qsub_logs()
+            
+        self.assertFalse(is_ok)
+        self.assertIn("Found 1 old qsub log folder", message)
+        self.assertIn(old_date.strftime('%Y-%m-%d'), message)
+    
+    @unittest.skipIf(cmr_lint is None, "Could not import cmr_lint module")
+    def test_check_old_qsub_logs_mixed_folders(self):
+        """Test qsub logs check with mixed folder types (valid dates, invalid names)."""
+        from datetime import datetime, timedelta
+        
+        with patch('cmr_lint.Path.home') as mock_home:
+            mock_home.return_value = Path(self.test_dir)
+            qsub_logs_dir = Path(self.test_dir) / 'qsub_logs'
+            qsub_logs_dir.mkdir()
+            
+            # Create an old folder with valid date format
+            old_date = datetime.now() - timedelta(days=120)
+            old_folder = qsub_logs_dir / old_date.strftime('%Y-%m-%d')
+            old_folder.mkdir()
+            
+            # Create folders with invalid names (should be ignored)
+            invalid_folder_1 = qsub_logs_dir / 'not-a-date'
+            invalid_folder_1.mkdir()
+            
+            invalid_folder_2 = qsub_logs_dir / '2024-13-45'  # Invalid date
+            invalid_folder_2.mkdir()
+            
+            # Create a file (should be ignored)
+            test_file = qsub_logs_dir / '2024-01-01.txt'
+            test_file.touch()
+            
+            is_ok, message = cmr_lint.check_old_qsub_logs()
+            
+        self.assertFalse(is_ok)
+        self.assertIn("Found 1 old qsub log folder", message)
+    
+    @unittest.skipIf(cmr_lint is None, "Could not import cmr_lint module")
+    def test_generate_fix_suggestions_with_qsub_logs(self):
+        """Test generating fix suggestions including qsub logs cleanup."""
+        with patch('cmr_lint.getpass.getuser', return_value='testuser'):
+            # Test when only qsub logs check fails
+            suggestions = cmr_lint.generate_fix_suggestions(True, True, True, False)
+        
+        self.assertTrue(len(suggestions) > 0)
+        suggestion_text = ' '.join(suggestions)
+        self.assertIn('Clean up old qsub log folders', suggestion_text)
+        self.assertIn('~/qsub_logs', suggestion_text)
+        self.assertIn('rm -rf', suggestion_text)
 
 
 if __name__ == '__main__':

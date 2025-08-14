@@ -207,7 +207,7 @@ solver: libmamba
     return template
 
 
-def generate_fix_suggestions(env_dirs_ok, pkg_dirs_ok, conda_symlink_ok):
+def generate_fix_suggestions(env_dirs_ok, pkg_dirs_ok, conda_symlink_ok, qsub_logs_ok):
     """Generate suggestions for fixing conda configuration issues."""
     username = getpass.getuser()
     suggestions = []
@@ -241,8 +241,58 @@ def generate_fix_suggestions(env_dirs_ok, pkg_dirs_ok, conda_symlink_ok):
         suggestions.append(f"   mkdir -p /pkg/cmr/{username}/")
         suggestions.append(f"   mv ~/.conda {target_dir}")
         suggestions.append(f"   ln -sf {target_dir} ~/.conda")
+        step_num += 1
+    
+    if not qsub_logs_ok:
+        suggestions.append(f"{step_num}. Clean up old qsub log folders:")
+        suggestions.append(f"   # Review and remove folders older than 3 months in ~/qsub_logs")
+        suggestions.append(f"   # Example: rm -rf ~/qsub_logs/2024-01-*  # (adjust dates as needed)")
+        suggestions.append(f"   # Or use: find ~/qsub_logs -maxdepth 1 -name '????-??-??' -type d -mtime +90 -delete")
     
     return suggestions
+
+
+def check_old_qsub_logs():
+    """Check for qsub log folders older than 3 months in ~/qsub_logs."""
+    from datetime import datetime, timedelta
+    import re
+    
+    qsub_logs_dir = Path.home() / 'qsub_logs'
+    
+    if not qsub_logs_dir.exists():
+        return True, "No ~/qsub_logs directory found"
+    
+    if not qsub_logs_dir.is_dir():
+        return True, "~/qsub_logs exists but is not a directory"
+    
+    # Date pattern for YYYY-MM-DD
+    date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+    three_months_ago = datetime.now() - timedelta(days=90)
+    old_folders = []
+    
+    try:
+        for item in qsub_logs_dir.iterdir():
+            if item.is_dir() and date_pattern.match(item.name):
+                try:
+                    folder_date = datetime.strptime(item.name, '%Y-%m-%d')
+                    if folder_date < three_months_ago:
+                        old_folders.append(item.name)
+                except ValueError:
+                    # Skip folders that don't match the date format exactly
+                    continue
+    except PermissionError:
+        return True, "Cannot access ~/qsub_logs directory (permission denied)"
+    
+    if old_folders:
+        old_folders.sort()
+        oldest_folder = old_folders[0]
+        newest_old_folder = old_folders[-1]
+        if len(old_folders) == 1:
+            return False, f"Found 1 old qsub log folder: {oldest_folder}"
+        else:
+            return False, f"Found {len(old_folders)} old qsub log folders (oldest: {oldest_folder}, newest old: {newest_old_folder})"
+    else:
+        return True, "No old qsub log folders found"
 
 
 def main():
@@ -290,8 +340,11 @@ def main():
     # Check ~/.conda symlink
     conda_symlink_ok, conda_msg = check_conda_symlink()
     
+    # Check old qsub log folders
+    qsub_logs_ok, qsub_logs_msg = check_old_qsub_logs()
+    
     # Only show results if --show-success is used or if there are issues
-    all_good = env_dirs_ok and pkg_dirs_ok and conda_symlink_ok
+    all_good = env_dirs_ok and pkg_dirs_ok and conda_symlink_ok and qsub_logs_ok
     show_output = args.show_success or not all_good
     
     if show_output:
@@ -311,6 +364,9 @@ def main():
         
         status_conda = "✓" if conda_symlink_ok else "✗"
         print(f"{status_conda} ~/.conda symlink: {conda_msg}")
+        
+        status_qsub_logs = "✓" if qsub_logs_ok else "✗"
+        print(f"{status_qsub_logs} Old qsub log folders: {qsub_logs_msg}")
     
     # If verbose, show current config
     if args.verbose and config and show_output:
@@ -328,7 +384,7 @@ def main():
         print("\n⚠️ Configuration Issues Found! Fixes suggested:")
         print("=" * 60)
         
-        suggestions = generate_fix_suggestions(env_dirs_ok, pkg_dirs_ok, conda_symlink_ok)
+        suggestions = generate_fix_suggestions(env_dirs_ok, pkg_dirs_ok, conda_symlink_ok, qsub_logs_ok)
         if suggestions:
             print("")
             for suggestion in suggestions:
