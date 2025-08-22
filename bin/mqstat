@@ -15,6 +15,7 @@ import os
 import pwd
 import sys
 import grp
+import argparse
 from collections import defaultdict
 
 # ANSI color codes
@@ -109,53 +110,60 @@ def parse_pbsnodes_output():
 
     return nodes
 
-def parse_qstat():
+def parse_qstat(path=None):
     """Parse qstat output to get job information."""
-    # Full format for detailed information
-    # Add -t to expand job arrays into individual jobs
-    output = run_command("qstat -f -t")
-    if not output:
-        return []
-    
+    if path is None:
+        path = os.environ.get("MQSTAT_QSTAT_F")
+    if path:
+        with open(path) as f:
+            output = f.read()
+    else:
+        # Full format for detailed information
+        # Add -t to expand job arrays into individual jobs
+        output = run_command("qstat -f -t")
+        if not output:
+            return []
+
     jobs = []
     current_job = None
-    
+
     for line in output.splitlines():
         # Match job ID line
         job_match = re.match(r'^Job Id: (.+)$', line)
         if job_match:
             if current_job:
                 jobs.append(current_job)
-            current_job = {'id': job_match.group(1), 'user': None, 'ncpus': 0, 'cpu_usage': 0, 'mem_usage': 0, 'gpu_usage': 0, 'state': None}
+            current_job = {'id': job_match.group(1), 'user': None, 'ncpus': 0,
+                           'cpu_usage': 0, 'mem_usage': 0, 'gpu_usage': 0,
+                           'state': None}
             continue
-            
+
         if not current_job:
             continue
+
+        # Match job name
+        name_match = re.search(r'Job_Name = (.+)', line)
+        if name_match:
+            current_job['name'] = name_match.group(1)
 
         # Match queue
         queue_match = re.search(r'queue = (.+)', line)
         if queue_match:
             current_job['queue'] = queue_match.group(1)
-            
+
         # Match job owner
         owner_match = re.search(r'Job_Owner = (.+)@', line)
         if owner_match:
             current_job['user'] = owner_match.group(1)
-            
+
         # Match job state
         state_match = re.search(r'job_state = ([A-Z])', line)
         if state_match:
             current_job['state'] = state_match.group(1)
-            
-        # Match resource usage
-        if 'resources_used' in line or 'Resource_List' in line:
-            # CPU time - not right since e.g. not shown for queued jobs
-            # cpu_match = re.search(r'resources_used.cput = (\d+):(\d+):(\d+)', line)
-            # if cpu_match:
-            #     h, m, s = map(int, cpu_match.groups())
-            #     current_job['cpu_usage'] = h * 3600 + m * 60 + s
 
-            # ncpus
+        # Match resource usage and requests
+        if 'resources_used' in line or 'Resource_List' in line:
+            # ncpus requested
             cpu_match = re.search(r'Resource_List.ncpus = (\d+)', line)
             if cpu_match:
                 current_job['ncpus'] = int(cpu_match.group(1))
@@ -164,7 +172,7 @@ def parse_qstat():
             cpu_match = re.search(r'resources_used.cpupercent = (\d+)', line)
             if cpu_match:
                 current_job['cpupercent'] = int(cpu_match.group(1))
-                
+
             # Memory usage
             if 'resources_used.mem' in line:
                 mem_match1 = re.search(r'resources_used.mem = (\d+)kb', line)
@@ -178,17 +186,34 @@ def parse_qstat():
                     current_job['mem_usage'] = 0
                 else:
                     raise Exception("Unknown memory unit from line: " + line)
-                
+
+            # Memory requested
+            mem_req_match = re.search(r'Resource_List.mem = (\d+)([a-zA-Z]+)', line)
+            if mem_req_match:
+                val = int(mem_req_match.group(1))
+                unit = mem_req_match.group(2).lower()
+                if unit == 'gb':
+                    mem_gb = val
+                elif unit == 'mb':
+                    mem_gb = val / 1024
+                elif unit == 'kb':
+                    mem_gb = val / (1024 * 1024)
+                else:
+                    mem_gb = 0
+                current_job['mem_request_gb'] = mem_gb
+
             # GPU
             gpu_match = re.search(r'Resource_List.ngpus = (\d+)', line)
             if gpu_match:
                 current_job['ngpus'] = int(gpu_match.group(1))
 
-            # walltime
+            # walltime used
             walltime_match = re.search(r'resources_used.walltime = (\d+):(\d+):(\d+)', line)
             if walltime_match:
                 h, m, s = map(int, walltime_match.groups())
                 current_job['walltime_used'] = h * 3600 + m * 60 + s
+                if 'walltime' in current_job:
+                    current_job['walltime'] = current_job['walltime'] - current_job['walltime_used']
 
             # Requested walltime
             walltime_match = re.search(r'Resource_List.walltime = (\d+):(\d+):(\d+)', line)
@@ -205,11 +230,11 @@ def parse_qstat():
                 # gpus
                 if 'ngpus' in current_job:
                     current_job['gpu_usage_remaining'] = current_job['ngpus'] * current_job['walltime']
-    
+
     # Add the last job
     if current_job:
         jobs.append(current_job)
-        
+
     return jobs
 
 def get_job_status_counts(jobs):
@@ -358,6 +383,15 @@ def calculate_user_stats(jobs, ignore_interactive=False):
         'running_cpu_utilisation': running_cpu_utilisation,
     }
 
+def format_hms(seconds):
+    """Format seconds to HH:MM:SS."""
+    if seconds is None:
+        return ""
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02}:{m:02}:{s:02}"
+
 def format_time_hours(seconds, descriptor=""):
     """Format seconds into hours, days, months, years or millenia."""
     hours = seconds / 3600
@@ -478,22 +512,52 @@ def parse_qusers_output():
         }
     return users
 
-def main():    
+def list_jobs(jobs):
+    """List jobs in a simple table."""
+    print("job_id\tname\ttime used\ttime remaining\tqueue\tRAM\tCPU\tstate")
+    for job in jobs:
+        job_id = job.get('id', '')
+        name = job.get('name', '')
+        used = format_hms(job.get('walltime_used', 0))
+        remaining = format_hms(job.get('walltime', 0))
+        queue = job.get('queue', '')
+        ram = ""
+        if 'mem_request_gb' in job:
+            ram = f"{int(job['mem_request_gb'])}G"
+            if job['mem_request_gb'] > 128:
+                ram += '🧠'
+        cpu = str(job.get('ncpus', ''))
+        if job.get('ncpus', 0) > 16:
+            cpu += '💪'
+        state = job.get('state', '')
+        print(f"{job_id}\t{name}\t{used}\t{remaining}\t{queue}\t{ram}\t{cpu}\t{state}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Cluster Usage Monitor")
+    parser.add_argument("--list", action="store_true", help="Summarise qstat -f output")
+    parser.add_argument("--qstat-file", help="Use qstat -f output from file")
+    args = parser.parse_args()
+
+    if args.list:
+        jobs = parse_qstat(path=args.qstat_file)
+        list_jobs(jobs)
+        return
+
     # Get node data
     nodes = parse_pbsnodes_output()
-    
+
     if not nodes:
         print("Failed to gather node information. Check if pbsnodeinfo is available.")
         return
-    
+
     # Get qusers data
     qusers_stats = parse_qusers_output()
-    
+
     # Calculate cluster stats
     cluster_stats = calculate_cluster_stats(nodes)
-    
+
     # Get job data
-    jobs = parse_qstat()
+    jobs = parse_qstat(path=args.qstat_file)
     
     # Get microbiome group members
     microbiome_members = get_unix_group_members("microbiome")

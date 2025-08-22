@@ -1,0 +1,27 @@
+Job Id: 123.server
+    Job_Name = testjob
+    queue = batch
+    Job_Owner = user@host
+    job_state = R
+    Resource_List.ncpus = 4
+    Resource_List.mem = 4gb
+    Resource_List.walltime = 01:00:00
+    resources_used.walltime = 00:10:00
+Job Id: 456.server
+    Job_Name = bigmem
+    queue = batch
+    Job_Owner = user@host
+    job_state = R
+    Resource_List.ncpus = 8
+    Resource_List.mem = 256gb
+    Resource_List.walltime = 02:00:00
+    resources_used.walltime = 00:30:00
+Job Id: 789.server
+    Job_Name = bigcpu
+    queue = batch
+    Job_Owner = user@host
+    job_state = Q
+    Resource_List.ncpus = 32
+    Resource_List.mem = 64gb
+    Resource_List.walltime = 03:00:00
+
