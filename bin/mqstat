@@ -15,6 +15,8 @@ import os
 import pwd
 import sys
 import grp
+import argparse
+from datetime import datetime
 from collections import defaultdict
 
 # ANSI color codes
@@ -119,16 +121,26 @@ def parse_qstat():
     
     jobs = []
     current_job = None
-    
+
     for line in output.splitlines():
         # Match job ID line
         job_match = re.match(r'^Job Id: (.+)$', line)
         if job_match:
             if current_job:
                 jobs.append(current_job)
-            current_job = {'id': job_match.group(1), 'user': None, 'ncpus': 0, 'cpu_usage': 0, 'mem_usage': 0, 'gpu_usage': 0, 'state': None}
+            current_job = {
+                'id': job_match.group(1),
+                'user': None,
+                'ncpus': 0,
+                'cpu_usage': 0,
+                'mem_usage': 0,
+                'gpu_usage': 0,
+                'state': None,
+                'name': None,
+                'mem_req_kb': 0,
+            }
             continue
-            
+
         if not current_job:
             continue
 
@@ -136,17 +148,32 @@ def parse_qstat():
         queue_match = re.search(r'queue = (.+)', line)
         if queue_match:
             current_job['queue'] = queue_match.group(1)
-            
+
         # Match job owner
         owner_match = re.search(r'Job_Owner = (.+)@', line)
         if owner_match:
             current_job['user'] = owner_match.group(1)
-            
+
+        # Job name
+        name_match = re.search(r'Job_Name = (.+)', line)
+        if name_match:
+            current_job['name'] = name_match.group(1).strip()
+
+        # qtime
+        qtime_match = re.search(r'qtime = (.+)', line)
+        if qtime_match:
+            current_job['qtime'] = datetime.strptime(qtime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+
+        # stime
+        stime_match = re.search(r'stime = (.+)', line)
+        if stime_match:
+            current_job['stime'] = datetime.strptime(stime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+
         # Match job state
         state_match = re.search(r'job_state = ([A-Z])', line)
         if state_match:
             current_job['state'] = state_match.group(1)
-            
+
         # Match resource usage
         if 'resources_used' in line or 'Resource_List' in line:
             # CPU time - not right since e.g. not shown for queued jobs
@@ -164,7 +191,7 @@ def parse_qstat():
             cpu_match = re.search(r'resources_used.cpupercent = (\d+)', line)
             if cpu_match:
                 current_job['cpupercent'] = int(cpu_match.group(1))
-                
+
             # Memory usage
             if 'resources_used.mem' in line:
                 mem_match1 = re.search(r'resources_used.mem = (\d+)kb', line)
@@ -178,6 +205,23 @@ def parse_qstat():
                     current_job['mem_usage'] = 0
                 else:
                     raise Exception("Unknown memory unit from line: " + line)
+
+            # Requested memory
+            mem_req_match = re.search(r'Resource_List.mem = (\d+)([a-zA-Z]+)', line)
+            if mem_req_match:
+                mem_val = int(mem_req_match.group(1))
+                unit = mem_req_match.group(2).lower()
+                if unit in ('kb', 'k'):
+                    mem_kb = mem_val
+                elif unit in ('mb', 'm'):
+                    mem_kb = mem_val * 1024
+                elif unit in ('gb', 'g'):
+                    mem_kb = mem_val * 1024 * 1024
+                elif unit in ('tb', 't'):
+                    mem_kb = mem_val * 1024 * 1024 * 1024
+                else:
+                    mem_kb = 0
+                current_job['mem_req_kb'] = mem_kb
                 
             # GPU
             gpu_match = re.search(r'Resource_List.ngpus = (\d+)', line)
@@ -209,8 +253,77 @@ def parse_qstat():
     # Add the last job
     if current_job:
         jobs.append(current_job)
-        
+
     return jobs
+
+
+def format_duration(seconds):
+    """Format a duration in seconds to a short human readable form."""
+    if seconds is None:
+        return ""
+    seconds = int(seconds)
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    if days > 0:
+        return f"{days}d{hours:02d}h"
+    return f"{hours:02d}:{minutes:02d}"
+
+
+def list_jobs(jobs):
+    """Group and list jobs by base name and resources."""
+    groups = defaultdict(list)
+    now = datetime.now()
+
+    for job in jobs:
+        name = job.get('name', '') or ''
+        base_name = re.sub(r'\..*', '', name)
+        mem_req = job.get('mem_req_kb', 0)
+        ncpus = job.get('ncpus', 0)
+        key = (base_name, ncpus, mem_req)
+        groups[key].append(job)
+
+    group_stats = []
+    for (base_name, ncpus, mem_req), job_list in groups.items():
+        running = sum(1 for j in job_list if j.get('state') == 'R')
+        queued = sum(1 for j in job_list if j.get('state') == 'Q')
+        total = len(job_list)
+        oldest_age = 0
+        oldest_state = ''
+        for j in job_list:
+            start_time = j.get('stime') if j.get('state') == 'R' else j.get('qtime')
+            if start_time:
+                age = (now - start_time).total_seconds()
+                if age > oldest_age:
+                    oldest_age = age
+                    oldest_state = j.get('state')
+        group_stats.append({
+            'name': base_name,
+            'ncpus': ncpus,
+            'mem_req': mem_req,
+            'running': running,
+            'queued': queued,
+            'total': total,
+            'oldest_age': oldest_age,
+            'oldest_state': oldest_state,
+        })
+
+    # Sort by longest age
+    group_stats.sort(key=lambda x: x['oldest_age'], reverse=True)
+    top = group_stats[:10]
+
+    # Header
+    print(f"{'Job':<30} {'CPU':>3} {'MemGB':>6} {'Run':>4} {'Q':>4} {'Tot':>4} {'Age':>8} {'S':>2} {'Flg':>3}")
+
+    for g in top:
+        mem_gb = g['mem_req'] / (1024 * 1024)
+        flags = ''
+        if g['mem_req'] > 128 * 1024 * 1024:
+            flags += 'R'
+        if g['ncpus'] > 16:
+            flags += 'C'
+        age_str = format_duration(g['oldest_age'])
+        print(f"{g['name']:<30} {g['ncpus']:>3} {mem_gb:>6.0f} {g['running']:>4} {g['queued']:>4} {g['total']:>4} {age_str:>8} {g['oldest_state'] or '':>2} {flags:>3}")
 
 def get_job_status_counts(jobs):
     """Count jobs by status (running, queued, held)."""
@@ -478,20 +591,29 @@ def parse_qusers_output():
         }
     return users
 
-def main():    
+def main():
+    parser = argparse.ArgumentParser(description="Cluster Usage Monitor")
+    parser.add_argument('--list', action='store_true', help='Summarise jobs')
+    args = parser.parse_args()
+
+    if args.list:
+        jobs = parse_qstat()
+        list_jobs(jobs)
+        return
+
     # Get node data
     nodes = parse_pbsnodes_output()
-    
+
     if not nodes:
         print("Failed to gather node information. Check if pbsnodeinfo is available.")
         return
-    
+
     # Get qusers data
     qusers_stats = parse_qusers_output()
-    
+
     # Calculate cluster stats
     cluster_stats = calculate_cluster_stats(nodes)
-    
+
     # Get job data
     jobs = parse_qstat()
     
