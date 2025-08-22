@@ -9,7 +9,7 @@ Job Id: 123.server
     resources_used.walltime = 00:10:00
 Job Id: 456.server
     Job_Name = bigmem
-    queue = batch
+    queue = test_batch_exec
     Job_Owner = user@host
     job_state = R
     Resource_List.ncpus = 8
@@ -24,4 +24,21 @@ Job Id: 789.server
     Resource_List.ncpus = 32
     Resource_List.mem = 64gb
     Resource_List.walltime = 03:00:00
-
+Job Id: 222.server
+    Job_Name = almostdone
+    queue = batch
+    Job_Owner = user@host
+    job_state = R
+    Resource_List.ncpus = 2
+    Resource_List.mem = 2gb
+    Resource_List.walltime = 01:00:00
+    resources_used.walltime = 00:50:00
+Job Id: 111.server
+    Job_Name = interactive
+    queue = cpu_inter_exec
+    Job_Owner = user@host
+    job_state = R
+    Resource_List.ncpus = 1
+    Resource_List.mem = 1gb
+    Resource_List.walltime = 00:10:00
+    resources_used.walltime = 00:01:00

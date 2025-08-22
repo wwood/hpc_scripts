@@ -212,14 +212,15 @@ def parse_qstat(path=None):
             if walltime_match:
                 h, m, s = map(int, walltime_match.groups())
                 current_job['walltime_used'] = h * 3600 + m * 60 + s
-                if 'walltime' in current_job:
-                    current_job['walltime'] = current_job['walltime'] - current_job['walltime_used']
+                if 'walltime_total' in current_job:
+                    current_job['walltime'] = current_job['walltime_total'] - current_job['walltime_used']
 
             # Requested walltime
             walltime_match = re.search(r'Resource_List.walltime = (\d+):(\d+):(\d+)', line)
             if walltime_match:
                 h, m, s = map(int, walltime_match.groups())
                 requested_walltime = h * 3600 + m * 60 + s
+                current_job['walltime_total'] = requested_walltime
                 # Deduct the time already used, if already running
                 if 'walltime_used' in current_job:
                     current_job['walltime'] = requested_walltime - current_job['walltime_used']
@@ -392,6 +393,27 @@ def format_hms(seconds):
     s = seconds % 60
     return f"{h:02}:{m:02}:{s:02}"
 
+
+def format_hm(seconds):
+    """Format seconds to HH:MM."""
+    if seconds is None:
+        return ""
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    return f"{h:02}:{m:02}"
+
+
+def progress_bar(used, total, width=20):
+    """Return a coloured progress bar representing used/total."""
+    if not total:
+        ratio = 0
+    else:
+        ratio = used / total
+    filled = int(ratio * width)
+    bar = "█" * filled + "-" * (width - filled)
+    colour = Colors.RED if ratio > 0.8 else Colors.GREEN
+    return f"{colour}{bar}{Colors.ENDC}"
+
 def format_time_hours(seconds, descriptor=""):
     """Format seconds into hours, days, months, years or millenia."""
     hours = seconds / 3600
@@ -514,23 +536,61 @@ def parse_qusers_output():
 
 def list_jobs(jobs):
     """List jobs in a simple table."""
-    print("job_id\tname\ttime used\ttime remaining\tqueue\tRAM\tCPU\tstate")
+    rows = []
     for job in jobs:
+        queue = job.get('queue', '')
+        if queue in ('cpu_inter_exec', 'gpu_inter_exec'):
+            continue
+        queue = queue.replace('_batch_exec', '')
         job_id = job.get('id', '')
         name = job.get('name', '')
-        used = format_hms(job.get('walltime_used', 0))
-        remaining = format_hms(job.get('walltime', 0))
-        queue = job.get('queue', '')
-        ram = ""
-        if 'mem_request_gb' in job:
-            ram = f"{int(job['mem_request_gb'])}G"
-            if job['mem_request_gb'] > 128:
-                ram += '🧠'
-        cpu = str(job.get('ncpus', ''))
-        if job.get('ncpus', 0) > 16:
-            cpu += '💪'
-        state = job.get('state', '')
-        print(f"{job_id}\t{name}\t{used}\t{remaining}\t{queue}\t{ram}\t{cpu}\t{state}")
+        used_s = job.get('walltime_used', 0)
+        total_s = job.get('walltime_total', job.get('walltime', 0))
+        used = format_hm(used_s)
+        total = format_hm(total_s)
+        bar = progress_bar(used_s, total_s)
+        cpu = job.get('ncpus', 0)
+        cpu_icon = '💪' if cpu > 16 else ' '
+        ram = int(job.get('mem_request_gb', 0))
+        ram_icon = '🧠' if ram > 128 else ' '
+        rows.append([job_id, name, used, bar, total, cpu, cpu_icon, ram, ram_icon, queue])
+
+    headers = ["job_id", "name", "time used", "progress", "walltime", "CPU", "RAM(G)", "queue"]
+    if not rows:
+        print("  ".join(headers))
+        return
+
+    id_w = max(len(headers[0]), max(len(r[0]) for r in rows))
+    name_w = max(len(headers[1]), max(len(r[1]) for r in rows))
+    time_w = len(headers[2])
+    wall_w = max(len(headers[4]), max(len(r[4]) for r in rows))
+    cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
+    ram_w = max(len(headers[6]), max(len(str(r[7])) for r in rows))
+
+    header_line = "  ".join([
+        headers[0].ljust(id_w),
+        headers[1].ljust(name_w),
+        headers[2].ljust(time_w),
+        headers[3].ljust(20),
+        headers[4].ljust(wall_w),
+        headers[5].rjust(cpu_w) + ' ',
+        headers[6].rjust(ram_w) + ' ',
+        headers[7],
+    ])
+    print(header_line)
+
+    for r in rows:
+        line = "  ".join([
+            r[0].ljust(id_w),
+            r[1].ljust(name_w),
+            r[2].ljust(time_w),
+            r[3],
+            r[4].ljust(wall_w),
+            str(r[5]).rjust(cpu_w) + r[6],
+            str(r[7]).rjust(ram_w) + r[8],
+            r[9],
+        ])
+        print(line)
 
 def main():
     parser = argparse.ArgumentParser(description="Cluster Usage Monitor")
