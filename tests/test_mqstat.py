@@ -103,6 +103,7 @@ def test_parse_qstat_finished_usage():
     assert finished['cput_used'] == 120
     assert finished['vmem_used_kb'] == 100 * 1024
     assert finished['start_time'] - finished['qtime'] == 5 * 60
+    assert finished['obittime'] - finished['start_time'] == 10 * 60
 
 
 def test_job_table_finished_util_and_note():

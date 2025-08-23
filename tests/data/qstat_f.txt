@@ -57,7 +57,7 @@ Job Id: 333.server
     Job_Owner = user@host
     job_state = C
     qtime = Mon Jan  1 00:00:00 2024
-    start_time = Mon Jan  1 00:05:00 2024
+    stime = Mon Jan  1 00:05:00 2024
     Resource_List.ncpus = 4
     Resource_List.mem = 4gb
     Resource_List.walltime = 01:00:00
@@ -66,5 +66,6 @@ Job Id: 333.server
     resources_used.vmem = 100mb
     resources_used.cpupercent = 400
     resources_used.ncpus = 4
-    exit_status = 1
+    Exit_status = 1
     mtime = Mon Jan  1 00:15:00 2024
+    obittime = Mon Jan  1 00:15:00 2024

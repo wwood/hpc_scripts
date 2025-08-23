@@ -174,7 +174,7 @@ def parse_qstat(path=None, include_history=False):
             except ValueError:
                 pass
 
-        stime_match = re.search(r'(?:start_time|stime) = (.+)', line)
+        stime_match = re.search(r'stime = (.+)', line)
         if stime_match:
             try:
                 dt = datetime.strptime(stime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
@@ -183,6 +183,14 @@ def parse_qstat(path=None, include_history=False):
                 pass
 
         # Finished time
+        obit_match = re.search(r'obittime = (.+)', line)
+        if obit_match:
+            try:
+                dt = datetime.strptime(obit_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                current_job['obittime'] = int(dt.timestamp())
+            except ValueError:
+                pass
+
         mtime_match = re.search(r'mtime = (.+)', line)
         if mtime_match:
             try:
@@ -286,7 +294,7 @@ def parse_qstat(path=None, include_history=False):
                 # gpus
                 if 'ngpus' in current_job:
                     current_job['gpu_usage_remaining'] = current_job['ngpus'] * current_job['walltime']
-        exit_match = re.search(r'exit_status = (\d+)', line)
+        exit_match = re.search(r'Exit_status = (\d+)', line)
         if exit_match:
             current_job['exit_status'] = int(exit_match.group(1))
 
@@ -848,14 +856,15 @@ def watch_jobs(get_jobs, interval=2):
             now = time.time()
             for job in jobs:
                 if job.get('state') in ('C', 'F'):
-                    mtime = job.get('mtime', now)
-                    if now - mtime <= 24 * 3600:
+                    ft = job.get('obittime') or job.get('mtime', now)
+                    if now - ft <= 24 * 3600:
                         finished[job['id']] = job
                 else:
                     running.append(job)
             # remove finished jobs older than 24h
             for jid, job in list(finished.items()):
-                if now - job.get('mtime', now) > 24 * 3600:
+                ft = job.get('obittime') or job.get('mtime', now)
+                if now - ft > 24 * 3600:
                     finished.pop(jid, None)
             stdscr.erase()
             maxy, maxx = stdscr.getmaxyx()
