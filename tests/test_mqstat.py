@@ -102,6 +102,7 @@ def test_parse_qstat_finished_usage():
     finished = next(j for j in jobs if j['id'] == '333.server')
     assert finished['cput_used'] == 120
     assert finished['vmem_used_kb'] == 100 * 1024
+    assert finished['start_time'] - finished['qtime'] == 5 * 60
 
 
 def test_job_table_finished_util_and_note():
@@ -120,6 +121,7 @@ def test_job_table_finished_util_and_note():
         "time used",
         "progress",
         "walltime",
+        "waited",
         "CPU",
         "util(%)",
         "RAM(G)",
@@ -130,12 +132,13 @@ def test_job_table_finished_util_and_note():
     row = split_cols(lines[1])
     assert row[0] == "333.server"
     assert row[1] == "finished"
-    assert row[5].rstrip('💪') == "4"
-    assert row[6] == "5%"
-    assert row[7].rstrip('🧠') == "4"
-    assert row[8] == "2%"
-    assert row[9] == "batch"
-    assert row[10].startswith("!<10% CPU, <10% RAM")
+    assert row[5] == "00:05"
+    assert row[6].rstrip('💪') == "4"
+    assert row[7] == "5%"
+    assert row[8].rstrip('🧠') == "4"
+    assert row[9] == "2%"
+    assert row[10] == "batch"
+    assert row[11].startswith("!<10% CPU, <10% RAM")
     assert lines[1].count("\x1b[91m") == 2
 
     raw_header = ANSI.sub('', lines[0])

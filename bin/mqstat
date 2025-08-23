@@ -165,6 +165,23 @@ def parse_qstat(path=None, include_history=False):
         if state_match:
             current_job['state'] = state_match.group(1)
 
+        # Queue and start times
+        qtime_match = re.search(r'qtime = (.+)', line)
+        if qtime_match:
+            try:
+                dt = datetime.strptime(qtime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                current_job['qtime'] = int(dt.timestamp())
+            except ValueError:
+                pass
+
+        stime_match = re.search(r'(?:start_time|stime) = (.+)', line)
+        if stime_match:
+            try:
+                dt = datetime.strptime(stime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                current_job['start_time'] = int(dt.timestamp())
+            except ValueError:
+                pass
+
         # Finished time
         mtime_match = re.search(r'mtime = (.+)', line)
         if mtime_match:
@@ -601,6 +618,13 @@ def job_table(jobs, finished=False):
         if cpupercent is not None and ncpus_used:
             if cpupercent < ncpus_used * 10:
                 note = '❗ over-resourced? <10% of CPU used'
+
+        waited = ''
+        qtime = job.get('qtime')
+        start_time = job.get('start_time')
+        if qtime and start_time and start_time > qtime:
+            waited = format_hm(start_time - qtime)
+
         if finished:
             cput_used = job.get('cput_used', 0)
             cpu_util = 0
@@ -632,6 +656,7 @@ def job_table(jobs, finished=False):
                 used,
                 bar,
                 total,
+                waited,
                 cpu,
                 cpu_icon,
                 cpu_util_str,
@@ -654,6 +679,7 @@ def job_table(jobs, finished=False):
             "time used",
             "progress",
             "walltime",
+            "waited",
             "CPU",
             "util(%)",
             "RAM(G)",
@@ -673,12 +699,13 @@ def job_table(jobs, finished=False):
     icon_w = 2  # emoji take two columns
 
     if finished:
-        cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
-        cpuu_w = max(len(headers[6]), max(len(r[7]) for r in rows))
-        ram_w = max(len(headers[7]), max(len(str(r[9])) for r in rows))
-        ramu_w = max(len(headers[8]), max(len(r[11]) for r in rows))
-        queue_w = max(len(headers[9]), max(len(r[13]) for r in rows))
-        note_w = max(len(headers[10]), max(len(r[14]) for r in rows))
+        wait_w = max(len(headers[5]), max(len(r[5]) for r in rows))
+        cpu_w = max(len(headers[6]), max(len(str(r[6])) for r in rows))
+        cpuu_w = max(len(headers[7]), max(len(r[8]) for r in rows))
+        ram_w = max(len(headers[8]), max(len(str(r[10])) for r in rows))
+        ramu_w = max(len(headers[9]), max(len(r[12]) for r in rows))
+        queue_w = max(len(headers[10]), max(len(r[14]) for r in rows))
+        note_w = max(len(headers[11]), max(len(r[15]) for r in rows))
 
         def colour(val, low):
             return f"{Colors.RED}{val}{Colors.ENDC}" if low else val
@@ -689,12 +716,13 @@ def job_table(jobs, finished=False):
             headers[2].ljust(time_w),
             headers[3].ljust(20),
             headers[4].ljust(wall_w),
-            headers[5].rjust(cpu_w) + ' ' * icon_w,
-            headers[6].rjust(cpuu_w),
-            headers[7].rjust(ram_w) + ' ' * icon_w,
-            headers[8].rjust(ramu_w),
-            headers[9].ljust(queue_w),
-            headers[10].ljust(note_w),
+            headers[5].ljust(wait_w),
+            headers[6].rjust(cpu_w) + ' ' * icon_w,
+            headers[7].rjust(cpuu_w),
+            headers[8].rjust(ram_w) + ' ' * icon_w,
+            headers[9].rjust(ramu_w),
+            headers[10].ljust(queue_w),
+            headers[11].ljust(note_w),
         ]
         lines = ["  ".join(header_parts)]
         for r in rows:
@@ -704,12 +732,13 @@ def job_table(jobs, finished=False):
                 r[2].ljust(time_w),
                 r[3],
                 r[4].ljust(wall_w),
-                str(r[5]).rjust(cpu_w) + r[6] + ' ' * (icon_w - (2 if r[6] else 0)),
-                colour(r[7].rjust(cpuu_w), r[8]),
-                str(r[9]).rjust(ram_w) + r[10] + ' ' * (icon_w - (2 if r[10] else 0)),
-                colour(r[11].rjust(ramu_w), r[12]),
-                r[13].ljust(queue_w),
-                r[14].ljust(note_w),
+                r[5].ljust(wait_w),
+                str(r[6]).rjust(cpu_w) + r[7] + ' ' * (icon_w - (2 if r[7] else 0)),
+                colour(r[8].rjust(cpuu_w), r[9]),
+                str(r[10]).rjust(ram_w) + r[11] + ' ' * (icon_w - (2 if r[11] else 0)),
+                colour(r[12].rjust(ramu_w), r[13]),
+                r[14].ljust(queue_w),
+                r[15].ljust(note_w),
             ]
             lines.append("  ".join(parts))
         return lines
