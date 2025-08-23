@@ -17,6 +17,7 @@ import sys
 import grp
 import argparse
 from collections import defaultdict
+from datetime import datetime
 
 # ANSI color codes
 class Colors:
@@ -110,7 +111,7 @@ def parse_pbsnodes_output():
 
     return nodes
 
-def parse_qstat(path=None):
+def parse_qstat(path=None, include_history=False):
     """Parse qstat output to get job information."""
     if path is None:
         path = os.environ.get("MQSTAT_QSTAT_F")
@@ -120,7 +121,10 @@ def parse_qstat(path=None):
     else:
         # Full format for detailed information
         # Add -t to expand job arrays into individual jobs
-        output = run_command("qstat -f -t")
+        cmd = "qstat -f -t"
+        if include_history:
+            cmd = "qstat -xf -t"
+        output = run_command(cmd)
         if not output:
             return []
 
@@ -161,6 +165,15 @@ def parse_qstat(path=None):
         if state_match:
             current_job['state'] = state_match.group(1)
 
+        # Finished time
+        mtime_match = re.search(r'mtime = (.+)', line)
+        if mtime_match:
+            try:
+                dt = datetime.strptime(mtime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                current_job['mtime'] = int(dt.timestamp())
+            except ValueError:
+                pass
+
         # Match resource usage and requests
         if 'resources_used' in line or 'Resource_List' in line:
             # ncpus requested
@@ -172,6 +185,10 @@ def parse_qstat(path=None):
             cpu_match = re.search(r'resources_used.cpupercent = (\d+)', line)
             if cpu_match:
                 current_job['cpupercent'] = int(cpu_match.group(1))
+
+            ncpus_used_match = re.search(r'resources_used.ncpus = (\d+)', line)
+            if ncpus_used_match:
+                current_job['ncpus_used'] = int(ncpus_used_match.group(1))
 
             # Memory usage
             if 'resources_used.mem' in line:
@@ -571,10 +588,16 @@ def job_table(jobs, finished=False):
         total = format_hm(total_s)
         bar = progress_bar(used_s, total_s)
         cpu = job.get('ncpus', 0)
-        cpu_icon = '💪' if cpu > 16 else ''
+        cpu_icon = '💪' if cpu > 48 else ''
         ram = int(job.get('mem_request_gb', 0))
-        ram_icon = '🧠' if ram > 128 else ''
+        ram_icon = '🧠' if ram > 187 else ''
         state = job.get('state', '')
+        note = ''
+        cpupercent = job.get('cpupercent')
+        ncpus_used = job.get('ncpus_used', job.get('ncpus', 0))
+        if cpupercent is not None and ncpus_used:
+            if cpupercent < ncpus_used * 10:
+                note = '❗ over-resourced? <10% of CPU used'
         row = [job_id, name, used, bar, total, cpu, cpu_icon, ram, ram_icon, state, queue]
         if finished:
             cput = format_hms(job.get('cput_used', 0))
@@ -582,11 +605,13 @@ def job_table(jobs, finished=False):
             vmem_gb = job.get('vmem_used_kb', 0) / (1024 * 1024)
             vmem = f"{int(vmem_gb)}" if vmem_gb else ""
             row.extend([cput, wall_used, vmem])
+        row.append(note)
         rows.append(row)
 
     headers = ["job_id", "name", "time used", "progress", "walltime", "CPU", "RAM(G)", "state", "queue"]
     if finished:
         headers += ["cputime", "walltime", "vmem"]
+    headers.append("note")
     if not rows:
         return ["  ".join(headers)]
 
@@ -602,6 +627,9 @@ def job_table(jobs, finished=False):
         cput_w = max(len(headers[9]), max(len(r[11]) for r in rows))
         wall2_w = max(len(headers[10]), max(len(r[12]) for r in rows))
         vmem_w = max(len(headers[11]), max(len(r[13]) for r in rows))
+        note_w = max(len(headers[12]), max(len(r[14]) for r in rows))
+    else:
+        note_w = max(len(headers[9]), max(len(r[11]) for r in rows))
     icon_w = 2  # emoji take two columns
 
     header_parts = [
@@ -620,7 +648,10 @@ def job_table(jobs, finished=False):
             headers[9].ljust(cput_w),
             headers[10].ljust(wall2_w),
             headers[11].ljust(vmem_w),
+            headers[12].ljust(note_w),
         ])
+    else:
+        header_parts.append(headers[9].ljust(note_w))
     lines = ["  ".join(header_parts)]
 
     for r in rows:
@@ -640,7 +671,10 @@ def job_table(jobs, finished=False):
                 r[11].ljust(cput_w),
                 r[12].ljust(wall2_w),
                 r[13].rjust(vmem_w),
+                r[14].ljust(note_w),
             ])
+        else:
+            parts.append(r[11].ljust(note_w))
         lines.append("  ".join(parts))
 
     return lines
@@ -690,13 +724,20 @@ def watch_jobs(get_jobs, interval=2):
             key = stdscr.getch()
             if key == ord('q'):
                 break
-            jobs = get_jobs()
+            jobs = get_jobs(include_history=True)
             running = []
+            now = time.time()
             for job in jobs:
                 if job.get('state') in ('C', 'F'):
-                    finished[job['id']] = job
+                    mtime = job.get('mtime', now)
+                    if now - mtime <= 24 * 3600:
+                        finished[job['id']] = job
                 else:
                     running.append(job)
+            # remove finished jobs older than 24h
+            for jid, job in list(finished.items()):
+                if now - job.get('mtime', now) > 24 * 3600:
+                    finished.pop(jid, None)
             stdscr.erase()
             maxy, maxx = stdscr.getmaxyx()
             half = maxy // 2
@@ -725,8 +766,8 @@ def main():
         list_jobs(jobs)
         return
     if args.watch:
-        def get_jobs():
-            return parse_qstat(path=args.qstat_file)
+        def get_jobs(include_history=False):
+            return parse_qstat(path=args.qstat_file, include_history=include_history)
         watch_jobs(get_jobs)
         return
 

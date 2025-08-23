@@ -7,6 +7,8 @@ Job Id: 123.server
     Resource_List.mem = 4gb
     Resource_List.walltime = 01:00:00
     resources_used.walltime = 00:10:00
+    resources_used.cpupercent = 300
+    resources_used.ncpus = 4
 Job Id: 456.server
     Job_Name = bigmem
     queue = test_batch_exec
@@ -16,14 +18,19 @@ Job Id: 456.server
     Resource_List.mem = 256gb
     Resource_List.walltime = 02:00:00
     resources_used.walltime = 00:30:00
+    resources_used.cpupercent = 800
+    resources_used.ncpus = 8
 Job Id: 789.server
     Job_Name = bigcpu
     queue = batch
     Job_Owner = user@host
-    job_state = Q
-    Resource_List.ncpus = 32
+    job_state = R
+    Resource_List.ncpus = 64
     Resource_List.mem = 64gb
     Resource_List.walltime = 03:00:00
+    resources_used.walltime = 00:20:00
+    resources_used.cpupercent = 100
+    resources_used.ncpus = 64
 Job Id: 222.server
     Job_Name = almostdone
     queue = batch
@@ -33,6 +40,8 @@ Job Id: 222.server
     Resource_List.mem = 2gb
     Resource_List.walltime = 01:00:00
     resources_used.walltime = 00:50:00
+    resources_used.cpupercent = 200
+    resources_used.ncpus = 2
 Job Id: 111.server
     Job_Name = interactive
     queue = cpu_inter_exec
@@ -53,3 +62,6 @@ Job Id: 333.server
     resources_used.walltime = 00:20:00
     resources_used.cput = 01:20:00
     resources_used.vmem = 8gb
+    resources_used.cpupercent = 400
+    resources_used.ncpus = 4
+    mtime = Mon Jan  1 00:00:00 2024
