@@ -137,3 +137,51 @@ def test_job_table_finished_util_and_note():
     assert row[9] == "batch"
     assert row[10].startswith("!<10% CPU, <10% RAM")
     assert lines[1].count("\x1b[91m") == 2
+
+
+def test_watch_jobs_no_curses_error(monkeypatch):
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import runpy, curses, time
+    mod = runpy.run_path(str(script))
+    jobs = mod['parse_qstat'](path=str(repo / "tests" / "data" / "qstat_f.txt"))
+
+    def fake_get_jobs(include_history=True):
+        return jobs
+
+    class DummyScreen:
+        def __init__(self):
+            self.calls = 0
+
+        def nodelay(self, flag):
+            pass
+
+        def getch(self):
+            self.calls += 1
+            return -1 if self.calls == 1 else ord('q')
+
+        def getmaxyx(self):
+            return (24, 80)
+
+        def addstr(self, *args, **kwargs):
+            pass
+
+        def erase(self):
+            pass
+
+        def refresh(self):
+            pass
+
+    monkeypatch.setattr(curses, 'curs_set', lambda n: None)
+    monkeypatch.setattr(curses, 'start_color', lambda: None)
+    monkeypatch.setattr(curses, 'use_default_colors', lambda: None)
+    monkeypatch.setattr(curses, 'init_pair', lambda *a, **k: None)
+    monkeypatch.setattr(curses, 'color_pair', lambda n: 0)
+    monkeypatch.setattr(time, 'sleep', lambda x: None)
+
+    def fake_wrapper(func, *args, **kwargs):
+        func(DummyScreen())
+
+    monkeypatch.setattr(curses, 'wrapper', fake_wrapper)
+
+    mod['watch_jobs'](fake_get_jobs, interval=0)

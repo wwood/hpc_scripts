@@ -761,27 +761,47 @@ def watch_jobs(get_jobs, interval=2):
     import curses
     import time
     import re
+    import unicodedata
 
     finished = {}
 
+    ansi_re = re.compile(r"\x1b\[(\d+)m(.*?)\x1b\[0m")
+
+    def _width(ch):
+        if unicodedata.combining(ch):
+            return 0
+        return 2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+
+    def addstr_safe(stdscr, y, x, text, maxx, colour=0):
+        width = 0
+        out = []
+        for ch in text:
+            w = _width(ch)
+            if x + width + w > maxx - 1:
+                break
+            out.append(ch)
+            width += w
+        if out:
+            try:
+                stdscr.addstr(y, x, "".join(out), colour)
+            except curses.error:
+                pass
+        return width
+
     def draw_line(stdscr, y, line, maxx):
-        """Draw a line that may contain ANSI colour escape codes."""
-        match = re.search(r"\x1b\[(\d+)m([^\x1b]+)\x1b\[0m", line)
-        if match:
-            start, end = match.span()
-            prefix = line[:start]
-            bar = match.group(2)
+        """Draw a line that may contain multiple ANSI colour escape codes."""
+        x = 0
+        last = 0
+        for match in ansi_re.finditer(line):
+            x += addstr_safe(stdscr, y, x, line[last:match.start()], maxx)
             colour = match.group(1)
-            suffix = line[end:]
-            stdscr.addstr(y, 0, prefix[:maxx-1])
-            if start < maxx - 1:
-                colour_pair = curses.color_pair(1 if colour == '92' else 2)
-                stdscr.addstr(y, start, bar[:maxx-1-start], colour_pair)
-            remaining = maxx - 1 - (start + len(bar))
-            if remaining > 0:
-                stdscr.addstr(y, start + len(bar), suffix[:remaining])
-        else:
-            stdscr.addstr(y, 0, line[:maxx-1])
+            colour_pair = curses.color_pair(1 if colour == '92' else 2)
+            x += addstr_safe(stdscr, y, x, match.group(2), maxx, colour_pair)
+            last = match.end()
+            if x >= maxx - 1:
+                break
+        if x < maxx - 1 and last < len(line):
+            addstr_safe(stdscr, y, x, line[last:], maxx)
 
     def _draw(stdscr):
         curses.curs_set(0)
