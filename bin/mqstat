@@ -655,9 +655,9 @@ def job_table(jobs, finished=False):
             "progress",
             "walltime",
             "CPU",
-            "util (%)",
+            "util(%)",
             "RAM(G)",
-            "util (%)",
+            "util(%)",
             "queue",
             "note",
         ]
@@ -705,9 +705,9 @@ def job_table(jobs, finished=False):
                 r[3],
                 r[4].ljust(wall_w),
                 str(r[5]).rjust(cpu_w) + r[6] + ' ' * (icon_w - (2 if r[6] else 0)),
-                colour(r[7], r[8]).rjust(cpuu_w),
+                colour(r[7].rjust(cpuu_w), r[8]),
                 str(r[9]).rjust(ram_w) + r[10] + ' ' * (icon_w - (2 if r[10] else 0)),
-                colour(r[11], r[12]).rjust(ramu_w),
+                colour(r[11].rjust(ramu_w), r[12]),
                 r[13].ljust(queue_w),
                 r[14].ljust(note_w),
             ]

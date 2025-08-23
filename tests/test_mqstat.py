@@ -121,9 +121,9 @@ def test_job_table_finished_util_and_note():
         "progress",
         "walltime",
         "CPU",
-        "util (%)",
+        "util(%)",
         "RAM(G)",
-        "util (%)",
+        "util(%)",
         "queue",
         "note",
     ]
@@ -137,6 +137,15 @@ def test_job_table_finished_util_and_note():
     assert row[9] == "batch"
     assert row[10].startswith("!<10% CPU, <10% RAM")
     assert lines[1].count("\x1b[91m") == 2
+
+    raw_header = ANSI.sub('', lines[0])
+    raw_row = ANSI.sub('', lines[1])
+    cpu_start = raw_header.index("util(%)")
+    cpu_field = raw_row[cpu_start:cpu_start + len("util(%)")]
+    assert cpu_field == "     5%"
+    ram_start = raw_header.find("util(%)", cpu_start + len("util(%)"))
+    ram_field = raw_row[ram_start:ram_start + len("util(%)")]
+    assert ram_field == "     2%"
 
 
 def test_watch_jobs_no_curses_error(monkeypatch):
