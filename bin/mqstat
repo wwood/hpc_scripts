@@ -269,6 +269,9 @@ def parse_qstat(path=None, include_history=False):
                 # gpus
                 if 'ngpus' in current_job:
                     current_job['gpu_usage_remaining'] = current_job['ngpus'] * current_job['walltime']
+        exit_match = re.search(r'exit_status = (\d+)', line)
+        if exit_match:
+            current_job['exit_status'] = int(exit_match.group(1))
 
     # Add the last job
     if current_job:
@@ -598,20 +601,68 @@ def job_table(jobs, finished=False):
         if cpupercent is not None and ncpus_used:
             if cpupercent < ncpus_used * 10:
                 note = '❗ over-resourced? <10% of CPU used'
-        row = [job_id, name, used, bar, total, cpu, cpu_icon, ram, ram_icon, state, queue]
         if finished:
-            cput = format_hms(job.get('cput_used', 0))
-            wall_used = format_hms(job.get('walltime_used', 0))
-            vmem_gb = job.get('vmem_used_kb', 0) / (1024 * 1024)
-            vmem = f"{int(vmem_gb)}" if vmem_gb else ""
-            row.extend([cput, wall_used, vmem])
-        row.append(note)
+            cput_used = job.get('cput_used', 0)
+            cpu_util = 0
+            if used_s and cpu > 0:
+                cpu_util = cput_used / (used_s * cpu) * 100
+            cpu_util_str = f"{int(cpu_util)}%"
+            cpu_low = cpu_util < 10
+
+            vmem_kb = job.get('vmem_used_kb', 0)
+            ram_util = 0
+            if ram:
+                ram_util = vmem_kb / (ram * 1024 * 1024) * 100
+            ram_util_str = f"{int(ram_util)}%"
+            ram_low = ram_util < 10
+
+            if used_s < 60:
+                note = 'short'
+            elif cpu_low and ram_low:
+                note = '<10% CPU, <10% RAM'
+            elif cpu_low:
+                note = '<10% CPU'
+            elif ram_low:
+                note = '<10% RAM'
+            if job.get('exit_status', 0) != 0:
+                note = '!' + note
+            row = [
+                job_id,
+                name,
+                used,
+                bar,
+                total,
+                cpu,
+                cpu_icon,
+                cpu_util_str,
+                cpu_low,
+                ram,
+                ram_icon,
+                ram_util_str,
+                ram_low,
+                queue,
+                note,
+            ]
+        else:
+            row = [job_id, name, used, bar, total, cpu, cpu_icon, ram, ram_icon, state, queue, note]
         rows.append(row)
 
-    headers = ["job_id", "name", "time used", "progress", "walltime", "CPU", "RAM(G)", "state", "queue"]
     if finished:
-        headers += ["cputime", "walltime", "vmem"]
-    headers.append("note")
+        headers = [
+            "job_id",
+            "name",
+            "time used",
+            "progress",
+            "walltime",
+            "CPU",
+            "util (%)",
+            "RAM(G)",
+            "util (%)",
+            "queue",
+            "note",
+        ]
+    else:
+        headers = ["job_id", "name", "time used", "progress", "walltime", "CPU", "RAM(G)", "state", "queue", "note"]
     if not rows:
         return ["  ".join(headers)]
 
@@ -619,65 +670,84 @@ def job_table(jobs, finished=False):
     name_w = max(len(headers[1]), max(len(r[1]) for r in rows))
     time_w = len(headers[2])
     wall_w = max(len(headers[4]), max(len(r[4]) for r in rows))
-    cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
-    ram_w = max(len(headers[6]), max(len(str(r[7])) for r in rows))
-    state_w = max(len(headers[7]), max(len(r[9]) for r in rows))
-    queue_w = max(len(headers[8]), max(len(r[10]) for r in rows))
-    if finished:
-        cput_w = max(len(headers[9]), max(len(r[11]) for r in rows))
-        wall2_w = max(len(headers[10]), max(len(r[12]) for r in rows))
-        vmem_w = max(len(headers[11]), max(len(r[13]) for r in rows))
-        note_w = max(len(headers[12]), max(len(r[14]) for r in rows))
-    else:
-        note_w = max(len(headers[9]), max(len(r[11]) for r in rows))
     icon_w = 2  # emoji take two columns
 
-    header_parts = [
-        headers[0].ljust(id_w),
-        headers[1].ljust(name_w),
-        headers[2].ljust(time_w),
-        headers[3].ljust(20),
-        headers[4].ljust(wall_w),
-        headers[5].rjust(cpu_w) + ' ' * icon_w,
-        headers[6].rjust(ram_w) + ' ' * icon_w,
-        headers[7].ljust(state_w),
-        headers[8].ljust(queue_w),
-    ]
     if finished:
-        header_parts.extend([
-            headers[9].ljust(cput_w),
-            headers[10].ljust(wall2_w),
-            headers[11].ljust(vmem_w),
-            headers[12].ljust(note_w),
-        ])
-    else:
-        header_parts.append(headers[9].ljust(note_w))
-    lines = ["  ".join(header_parts)]
+        cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
+        cpuu_w = max(len(headers[6]), max(len(r[7]) for r in rows))
+        ram_w = max(len(headers[7]), max(len(str(r[9])) for r in rows))
+        ramu_w = max(len(headers[8]), max(len(r[11]) for r in rows))
+        queue_w = max(len(headers[9]), max(len(r[13]) for r in rows))
+        note_w = max(len(headers[10]), max(len(r[14]) for r in rows))
 
-    for r in rows:
-        parts = [
-            r[0].ljust(id_w),
-            r[1].ljust(name_w),
-            r[2].ljust(time_w),
-            r[3],
-            r[4].ljust(wall_w),
-            str(r[5]).rjust(cpu_w) + r[6] + ' ' * (icon_w - (2 if r[6] else 0)),
-            str(r[7]).rjust(ram_w) + r[8] + ' ' * (icon_w - (2 if r[8] else 0)),
-            r[9].ljust(state_w),
-            r[10].ljust(queue_w),
+        def colour(val, low):
+            return f"{Colors.RED}{val}{Colors.ENDC}" if low else val
+
+        header_parts = [
+            headers[0].ljust(id_w),
+            headers[1].ljust(name_w),
+            headers[2].ljust(time_w),
+            headers[3].ljust(20),
+            headers[4].ljust(wall_w),
+            headers[5].rjust(cpu_w) + ' ' * icon_w,
+            headers[6].rjust(cpuu_w),
+            headers[7].rjust(ram_w) + ' ' * icon_w,
+            headers[8].rjust(ramu_w),
+            headers[9].ljust(queue_w),
+            headers[10].ljust(note_w),
         ]
-        if finished:
-            parts.extend([
-                r[11].ljust(cput_w),
-                r[12].ljust(wall2_w),
-                r[13].rjust(vmem_w),
+        lines = ["  ".join(header_parts)]
+        for r in rows:
+            parts = [
+                r[0].ljust(id_w),
+                r[1].ljust(name_w),
+                r[2].ljust(time_w),
+                r[3],
+                r[4].ljust(wall_w),
+                str(r[5]).rjust(cpu_w) + r[6] + ' ' * (icon_w - (2 if r[6] else 0)),
+                colour(r[7], r[8]).rjust(cpuu_w),
+                str(r[9]).rjust(ram_w) + r[10] + ' ' * (icon_w - (2 if r[10] else 0)),
+                colour(r[11], r[12]).rjust(ramu_w),
+                r[13].ljust(queue_w),
                 r[14].ljust(note_w),
-            ])
-        else:
-            parts.append(r[11].ljust(note_w))
-        lines.append("  ".join(parts))
+            ]
+            lines.append("  ".join(parts))
+        return lines
+    else:
+        cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
+        ram_w = max(len(headers[6]), max(len(str(r[7])) for r in rows))
+        state_w = max(len(headers[7]), max(len(r[9]) for r in rows))
+        queue_w = max(len(headers[8]), max(len(r[10]) for r in rows))
+        note_w = max(len(headers[9]), max(len(r[11]) for r in rows))
 
-    return lines
+        header_parts = [
+            headers[0].ljust(id_w),
+            headers[1].ljust(name_w),
+            headers[2].ljust(time_w),
+            headers[3].ljust(20),
+            headers[4].ljust(wall_w),
+            headers[5].rjust(cpu_w) + ' ' * icon_w,
+            headers[6].rjust(ram_w) + ' ' * icon_w,
+            headers[7].ljust(state_w),
+            headers[8].ljust(queue_w),
+            headers[9].ljust(note_w),
+        ]
+        lines = ["  ".join(header_parts)]
+        for r in rows:
+            parts = [
+                r[0].ljust(id_w),
+                r[1].ljust(name_w),
+                r[2].ljust(time_w),
+                r[3],
+                r[4].ljust(wall_w),
+                str(r[5]).rjust(cpu_w) + r[6] + ' ' * (icon_w - (2 if r[6] else 0)),
+                str(r[7]).rjust(ram_w) + r[8] + ' ' * (icon_w - (2 if r[8] else 0)),
+                r[9].ljust(state_w),
+                r[10].ljust(queue_w),
+                r[11].ljust(note_w),
+            ]
+            lines.append("  ".join(parts))
+        return lines
 
 
 def list_jobs(jobs):

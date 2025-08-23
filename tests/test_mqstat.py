@@ -100,5 +100,40 @@ def test_parse_qstat_finished_usage():
     mod = runpy.run_path(str(script))
     jobs = mod['parse_qstat'](path=str(qstat_file))
     finished = next(j for j in jobs if j['id'] == '333.server')
-    assert finished['cput_used'] == 4800
-    assert finished['vmem_used_kb'] == 8 * 1024 * 1024
+    assert finished['cput_used'] == 120
+    assert finished['vmem_used_kb'] == 100 * 1024
+
+
+def test_job_table_finished_util_and_note():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    qstat_file = repo / "tests" / "data" / "qstat_f.txt"
+    import runpy
+    mod = runpy.run_path(str(script))
+    jobs = mod['parse_qstat'](path=str(qstat_file))
+    finished = next(j for j in jobs if j['id'] == '333.server')
+    lines = mod['job_table']([finished], finished=True)
+    header = [c for c in split_cols(lines[0]) if c]
+    assert header == [
+        "job_id",
+        "name",
+        "time used",
+        "progress",
+        "walltime",
+        "CPU",
+        "util (%)",
+        "RAM(G)",
+        "util (%)",
+        "queue",
+        "note",
+    ]
+    row = split_cols(lines[1])
+    assert row[0] == "333.server"
+    assert row[1] == "finished"
+    assert row[5].rstrip('💪') == "4"
+    assert row[6] == "5%"
+    assert row[7].rstrip('🧠') == "4"
+    assert row[8] == "2%"
+    assert row[9] == "batch"
+    assert row[10].startswith("!<10% CPU, <10% RAM")
+    assert lines[1].count("\x1b[91m") == 2
