@@ -215,6 +215,27 @@ def parse_qstat(path=None):
                 if 'walltime_total' in current_job:
                     current_job['walltime'] = current_job['walltime_total'] - current_job['walltime_used']
 
+            # CPU time used
+            cput_match = re.search(r'resources_used.cput = (\d+):(\d+):(\d+)', line)
+            if cput_match:
+                h, m, s = map(int, cput_match.groups())
+                current_job['cput_used'] = h * 3600 + m * 60 + s
+
+            # vmem used
+            vmem_match = re.search(r'resources_used.vmem = (\d+)([a-zA-Z]+)', line)
+            if vmem_match:
+                val = int(vmem_match.group(1))
+                unit = vmem_match.group(2).lower()
+                if unit == 'kb':
+                    vmem_kb = val
+                elif unit == 'mb':
+                    vmem_kb = val * 1024
+                elif unit == 'gb':
+                    vmem_kb = val * 1024 * 1024
+                else:
+                    vmem_kb = 0
+                current_job['vmem_used_kb'] = vmem_kb
+
             # Requested walltime
             walltime_match = re.search(r'Resource_List.walltime = (\d+):(\d+):(\d+)', line)
             if walltime_match:
@@ -534,8 +555,8 @@ def parse_qusers_output():
         }
     return users
 
-def list_jobs(jobs):
-    """List jobs in a simple table."""
+def job_table(jobs, finished=False):
+    """Return formatted job table lines."""
     rows = []
     for job in jobs:
         queue = job.get('queue', '')
@@ -553,12 +574,21 @@ def list_jobs(jobs):
         cpu_icon = '💪' if cpu > 16 else ''
         ram = int(job.get('mem_request_gb', 0))
         ram_icon = '🧠' if ram > 128 else ''
-        rows.append([job_id, name, used, bar, total, cpu, cpu_icon, ram, ram_icon, queue])
+        state = job.get('state', '')
+        row = [job_id, name, used, bar, total, cpu, cpu_icon, ram, ram_icon, state, queue]
+        if finished:
+            cput = format_hms(job.get('cput_used', 0))
+            wall_used = format_hms(job.get('walltime_used', 0))
+            vmem_gb = job.get('vmem_used_kb', 0) / (1024 * 1024)
+            vmem = f"{int(vmem_gb)}" if vmem_gb else ""
+            row.extend([cput, wall_used, vmem])
+        rows.append(row)
 
-    headers = ["job_id", "name", "time used", "progress", "walltime", "CPU", "RAM(G)", "queue"]
+    headers = ["job_id", "name", "time used", "progress", "walltime", "CPU", "RAM(G)", "state", "queue"]
+    if finished:
+        headers += ["cputime", "walltime", "vmem"]
     if not rows:
-        print("  ".join(headers))
-        return
+        return ["  ".join(headers)]
 
     id_w = max(len(headers[0]), max(len(r[0]) for r in rows))
     name_w = max(len(headers[1]), max(len(r[1]) for r in rows))
@@ -566,9 +596,15 @@ def list_jobs(jobs):
     wall_w = max(len(headers[4]), max(len(r[4]) for r in rows))
     cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
     ram_w = max(len(headers[6]), max(len(str(r[7])) for r in rows))
+    state_w = max(len(headers[7]), max(len(r[9]) for r in rows))
+    queue_w = max(len(headers[8]), max(len(r[10]) for r in rows))
+    if finished:
+        cput_w = max(len(headers[9]), max(len(r[11]) for r in rows))
+        wall2_w = max(len(headers[10]), max(len(r[12]) for r in rows))
+        vmem_w = max(len(headers[11]), max(len(r[13]) for r in rows))
     icon_w = 2  # emoji take two columns
 
-    header_line = "  ".join([
+    header_parts = [
         headers[0].ljust(id_w),
         headers[1].ljust(name_w),
         headers[2].ljust(time_w),
@@ -576,12 +612,19 @@ def list_jobs(jobs):
         headers[4].ljust(wall_w),
         headers[5].rjust(cpu_w) + ' ' * icon_w,
         headers[6].rjust(ram_w) + ' ' * icon_w,
-        headers[7],
-    ])
-    print(header_line)
+        headers[7].ljust(state_w),
+        headers[8].ljust(queue_w),
+    ]
+    if finished:
+        header_parts.extend([
+            headers[9].ljust(cput_w),
+            headers[10].ljust(wall2_w),
+            headers[11].ljust(vmem_w),
+        ])
+    lines = ["  ".join(header_parts)]
 
     for r in rows:
-        line = "  ".join([
+        parts = [
             r[0].ljust(id_w),
             r[1].ljust(name_w),
             r[2].ljust(time_w),
@@ -589,19 +632,76 @@ def list_jobs(jobs):
             r[4].ljust(wall_w),
             str(r[5]).rjust(cpu_w) + r[6] + ' ' * (icon_w - (2 if r[6] else 0)),
             str(r[7]).rjust(ram_w) + r[8] + ' ' * (icon_w - (2 if r[8] else 0)),
-            r[9],
-        ])
+            r[9].ljust(state_w),
+            r[10].ljust(queue_w),
+        ]
+        if finished:
+            parts.extend([
+                r[11].ljust(cput_w),
+                r[12].ljust(wall2_w),
+                r[13].rjust(vmem_w),
+            ])
+        lines.append("  ".join(parts))
+
+    return lines
+
+
+def list_jobs(jobs):
+    """Print job table."""
+    for line in job_table(jobs):
         print(line)
+
+
+def watch_jobs(get_jobs, interval=2):
+    """Continuously display job list, updating every interval seconds."""
+    import curses
+    import time
+
+    finished = {}
+
+    def _draw(stdscr):
+        curses.curs_set(0)
+        stdscr.nodelay(True)
+        while True:
+            key = stdscr.getch()
+            if key == ord('q'):
+                break
+            jobs = get_jobs()
+            running = []
+            for job in jobs:
+                if job.get('state') in ('C', 'F'):
+                    finished[job['id']] = job
+                else:
+                    running.append(job)
+            stdscr.erase()
+            maxy, maxx = stdscr.getmaxyx()
+            half = maxy // 2
+            lines_running = job_table(running)
+            lines_finished = job_table(list(finished.values()), finished=True)
+            for i, line in enumerate(lines_running[:half]):
+                stdscr.addstr(i, 0, line[:maxx-1])
+            for i, line in enumerate(lines_finished[:maxy-half]):
+                stdscr.addstr(half + i, 0, line[:maxx-1])
+            stdscr.refresh()
+            time.sleep(interval)
+
+    curses.wrapper(_draw)
 
 def main():
     parser = argparse.ArgumentParser(description="Cluster Usage Monitor")
     parser.add_argument("--list", action="store_true", help="Summarise qstat -f output")
+    parser.add_argument("--watch", action="store_true", help="Continuously watch job list")
     parser.add_argument("--qstat-file", help="Use qstat -f output from file")
     args = parser.parse_args()
 
     if args.list:
         jobs = parse_qstat(path=args.qstat_file)
         list_jobs(jobs)
+        return
+    if args.watch:
+        def get_jobs():
+            return parse_qstat(path=args.qstat_file)
+        watch_jobs(get_jobs)
         return
 
     # Get node data

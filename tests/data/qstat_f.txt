@@ -42,3 +42,14 @@ Job Id: 111.server
     Resource_List.mem = 1gb
     Resource_List.walltime = 00:10:00
     resources_used.walltime = 00:01:00
+Job Id: 333.server
+    Job_Name = finished
+    queue = batch
+    Job_Owner = user@host
+    job_state = C
+    Resource_List.ncpus = 4
+    Resource_List.mem = 4gb
+    Resource_List.walltime = 01:00:00
+    resources_used.walltime = 00:20:00
+    resources_used.cput = 01:20:00
+    resources_used.vmem = 8gb
