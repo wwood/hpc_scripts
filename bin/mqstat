@@ -656,11 +656,35 @@ def watch_jobs(get_jobs, interval=2):
     """Continuously display job list, updating every interval seconds."""
     import curses
     import time
+    import re
 
     finished = {}
 
+    def draw_line(stdscr, y, line, maxx):
+        """Draw a line that may contain ANSI colour escape codes."""
+        match = re.search(r"\x1b\[(\d+)m([^\x1b]+)\x1b\[0m", line)
+        if match:
+            start, end = match.span()
+            prefix = line[:start]
+            bar = match.group(2)
+            colour = match.group(1)
+            suffix = line[end:]
+            stdscr.addstr(y, 0, prefix[:maxx-1])
+            if start < maxx - 1:
+                colour_pair = curses.color_pair(1 if colour == '92' else 2)
+                stdscr.addstr(y, start, bar[:maxx-1-start], colour_pair)
+            remaining = maxx - 1 - (start + len(bar))
+            if remaining > 0:
+                stdscr.addstr(y, start + len(bar), suffix[:remaining])
+        else:
+            stdscr.addstr(y, 0, line[:maxx-1])
+
     def _draw(stdscr):
         curses.curs_set(0)
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_GREEN, -1)
+        curses.init_pair(2, curses.COLOR_RED, -1)
         stdscr.nodelay(True)
         while True:
             key = stdscr.getch()
@@ -679,9 +703,11 @@ def watch_jobs(get_jobs, interval=2):
             lines_running = job_table(running)
             lines_finished = job_table(list(finished.values()), finished=True)
             for i, line in enumerate(lines_running[:half]):
-                stdscr.addstr(i, 0, line[:maxx-1])
-            for i, line in enumerate(lines_finished[:maxy-half]):
-                stdscr.addstr(half + i, 0, line[:maxx-1])
+                draw_line(stdscr, i, line, maxx)
+            title_y = half
+            stdscr.addstr(title_y, 0, "Finished jobs ===="[:maxx-1])
+            for i, line in enumerate(lines_finished[:maxy - half - 1]):
+                draw_line(stdscr, title_y + 1 + i, line, maxx)
             stdscr.refresh()
             time.sleep(interval)
 
