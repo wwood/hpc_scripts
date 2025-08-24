@@ -113,18 +113,37 @@ def test_parse_qstat_max_jobs():
     import os, runpy
     os.environ.pop("MQSTAT_QSTAT_F", None)
     mod = runpy.run_path(str(script))
-    captured = {}
+    captured = []
 
     def fake_run_command(cmd):
-        captured['cmd'] = cmd
-        return ""
+        captured.append(cmd)
+        return "Job Id: 1.server\n"
 
     mod['parse_qstat'].__globals__['run_command'] = fake_run_command
     mod['parse_qstat'](max_jobs=10, include_history=True)
-    assert (
-        captured['cmd']
-        == "qstat -xf | awk '/Job Id:/{if (count++==10) exit} {print}'"
-    )
+    assert captured == [
+        "qstat -f -t | awk '/Job Id:/{if (count++==10) {print \"AWK_LIMIT_REACHED\"; exit}} {print}'",
+        "qstat -xf -t | awk '/Job Id:/{if (count++==10) exit} {print}'",
+    ]
+
+
+def test_parse_qstat_merges_active_and_history():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import os, runpy
+    os.environ.pop("MQSTAT_QSTAT_F", None)
+    mod = runpy.run_path(str(script))
+
+    def fake_run_command(cmd):
+        if "qstat -f -t" in cmd:
+            return "Job Id: 1.server\nJob Id: 2.server\nAWK_LIMIT_REACHED\n"
+        return "Job Id: 2.server\nJob Id: 3.server\n"
+
+    mod['parse_qstat'].__globals__['run_command'] = fake_run_command
+    jobs = mod['parse_qstat'](max_jobs=10, include_history=True)
+    ids = sorted(j['id'] for j in jobs)
+    assert ids == ['1.server', '2.server', '3.server']
+    assert mod['parse_qstat'].limit_hit is True
 
 
 def test_job_table_finished_util_and_note():
@@ -171,6 +190,18 @@ def test_job_table_finished_util_and_note():
     ram_start = raw_header.find("util(%)", cpu_start + len("util(%)"))
     ram_field = raw_row[ram_start:ram_start + len("util(%)")]
     assert ram_field == "     2%"
+
+
+def test_job_table_warning_when_limited():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import runpy
+    mod = runpy.run_path(str(script))
+    mod['parse_qstat'].limit_hit = True
+    job = {'id': '1', 'name': 'a', 'ncpus': 1, 'mem_request_gb': 1, 'state': 'R'}
+    lines = mod['job_table']([job])
+    assert lines[0].startswith("\x1b[1m\x1b[91mWARNING")
+    mod['parse_qstat'].limit_hit = False
 
 
 def test_watch_jobs_no_curses_error(monkeypatch):

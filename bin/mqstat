@@ -112,203 +112,198 @@ def parse_pbsnodes_output():
     return nodes
 
 def parse_qstat(path=None, include_history=False, max_jobs=None):
-    """Parse qstat output to get job information."""
+    """Parse qstat output and merge active and historical jobs."""
+
+    parse_qstat.limit_hit = False
+
+    def _parse(output):
+        jobs = []
+        current_job = None
+        for line in output.splitlines():
+            job_match = re.match(r'^Job Id: (.+)$', line)
+            if job_match:
+                if current_job:
+                    jobs.append(current_job)
+                current_job = {'id': job_match.group(1), 'user': None, 'ncpus': 0,
+                               'cpu_usage': 0, 'mem_usage': 0, 'gpu_usage': 0,
+                               'state': None}
+                continue
+            if not current_job:
+                continue
+
+            name_match = re.search(r'Job_Name = (.+)', line)
+            if name_match:
+                current_job['name'] = name_match.group(1)
+
+            queue_match = re.search(r'queue = (.+)', line)
+            if queue_match:
+                current_job['queue'] = queue_match.group(1)
+
+            owner_match = re.search(r'Job_Owner = (.+)@', line)
+            if owner_match:
+                current_job['user'] = owner_match.group(1)
+
+            state_match = re.search(r'job_state = ([A-Z])', line)
+            if state_match:
+                current_job['state'] = state_match.group(1)
+
+            qtime_match = re.search(r'qtime = (.+)', line)
+            if qtime_match:
+                try:
+                    dt = datetime.strptime(qtime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                    current_job['qtime'] = int(dt.timestamp())
+                except ValueError:
+                    pass
+
+            stime_match = re.search(r'stime = (.+)', line)
+            if stime_match:
+                try:
+                    dt = datetime.strptime(stime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                    current_job['start_time'] = int(dt.timestamp())
+                except ValueError:
+                    pass
+
+            obit_match = re.search(r'obittime = (.+)', line)
+            if obit_match:
+                try:
+                    dt = datetime.strptime(obit_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                    current_job['obittime'] = int(dt.timestamp())
+                except ValueError:
+                    pass
+
+            mtime_match = re.search(r'mtime = (.+)', line)
+            if mtime_match:
+                try:
+                    dt = datetime.strptime(mtime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
+                    current_job['mtime'] = int(dt.timestamp())
+                except ValueError:
+                    pass
+
+            if 'resources_used' in line or 'Resource_List' in line:
+                cpu_match = re.search(r'Resource_List.ncpus = (\d+)', line)
+                if cpu_match:
+                    current_job['ncpus'] = int(cpu_match.group(1))
+
+                cpu_match = re.search(r'resources_used.cpupercent = (\d+)', line)
+                if cpu_match:
+                    current_job['cpupercent'] = int(cpu_match.group(1))
+
+                ncpus_used_match = re.search(r'resources_used.ncpus = (\d+)', line)
+                if ncpus_used_match:
+                    current_job['ncpus_used'] = int(ncpus_used_match.group(1))
+
+                if 'resources_used.mem' in line:
+                    mem_match1 = re.search(r'resources_used.mem = (\d+)kb', line)
+                    mem_match2 = re.search(r'resources_used.mem = (\d+)gb', line)
+                    mem_match3 = re.search(r'resources_used.mem = 0b', line)
+                    if mem_match1:
+                        current_job['mem_usage'] = int(mem_match1.group(1))
+                    elif mem_match2:
+                        current_job['mem_usage'] = int(mem_match2.group(1)) * 1024 * 1024
+                    elif mem_match3:
+                        current_job['mem_usage'] = 0
+                    else:
+                        raise Exception("Unknown memory unit from line: " + line)
+
+                mem_req_match = re.search(r'Resource_List.mem = (\d+)([a-zA-Z]+)', line)
+                if mem_req_match:
+                    val = int(mem_req_match.group(1))
+                    unit = mem_req_match.group(2).lower()
+                    if unit == 'gb':
+                        mem_gb = val
+                    elif unit == 'mb':
+                        mem_gb = val / 1024
+                    elif unit == 'kb':
+                        mem_gb = val / (1024 * 1024)
+                    else:
+                        mem_gb = 0
+                    current_job['mem_request_gb'] = mem_gb
+
+                gpu_match = re.search(r'Resource_List.ngpus = (\d+)', line)
+                if gpu_match:
+                    current_job['ngpus'] = int(gpu_match.group(1))
+
+                walltime_match = re.search(r'resources_used.walltime = (\d+):(\d+):(\d+)', line)
+                if walltime_match:
+                    h, m, s = map(int, walltime_match.groups())
+                    current_job['walltime_used'] = h * 3600 + m * 60 + s
+                    if 'walltime_total' in current_job:
+                        current_job['walltime'] = current_job['walltime_total'] - current_job['walltime_used']
+
+                cput_match = re.search(r'resources_used.cput = (\d+):(\d+):(\d+)', line)
+                if cput_match:
+                    h, m, s = map(int, cput_match.groups())
+                    current_job['cput_used'] = h * 3600 + m * 60 + s
+
+                vmem_match = re.search(r'resources_used.vmem = (\d+)([a-zA-Z]+)', line)
+                if vmem_match:
+                    val = int(vmem_match.group(1))
+                    unit = vmem_match.group(2).lower()
+                    if unit == 'kb':
+                        vmem_kb = val
+                    elif unit == 'mb':
+                        vmem_kb = val * 1024
+                    elif unit == 'gb':
+                        vmem_kb = val * 1024 * 1024
+                    else:
+                        vmem_kb = 0
+                    current_job['vmem_used_kb'] = vmem_kb
+
+                walltime_match = re.search(r'Resource_List.walltime = (\d+):(\d+):(\d+)', line)
+                if walltime_match:
+                    h, m, s = map(int, walltime_match.groups())
+                    requested_walltime = h * 3600 + m * 60 + s
+                    current_job['walltime_total'] = requested_walltime
+                    if 'walltime_used' in current_job:
+                        current_job['walltime'] = requested_walltime - current_job['walltime_used']
+                    else:
+                        current_job['walltime'] = requested_walltime
+                    current_job['cpu_usage_remaining'] = current_job['ncpus'] * current_job['walltime']
+                    if 'ngpus' in current_job:
+                        current_job['gpu_usage_remaining'] = current_job['ngpus'] * current_job['walltime']
+
+            exit_match = re.search(r'Exit_status = (\d+)', line)
+            if exit_match:
+                current_job['exit_status'] = int(exit_match.group(1))
+
+        if current_job:
+            jobs.append(current_job)
+        return jobs
+
     if path is None:
         path = os.environ.get("MQSTAT_QSTAT_F")
     if path:
         with open(path) as f:
             output = f.read()
-    else:
-        # Full format for detailed information
-        # Add -t to expand job arrays into individual jobs
-        cmd = "qstat -f -t"
-        if include_history:
-            cmd = "qstat -xf -t"
+        return _parse(output)
+
+    limit_marker = "AWK_LIMIT_REACHED"
+    cmd_active = "qstat -f -t"
+    if max_jobs:
+        cmd_active = (
+            f"{cmd_active} | awk '/Job Id:/{{if (count++=={max_jobs}) {{print \"{limit_marker}\"; exit}}}} {{print}}'"
+        )
+    active_out = run_command(cmd_active)
+    if not active_out:
+        return []
+    lines = active_out.splitlines()
+    if lines and lines[-1] == limit_marker:
+        parse_qstat.limit_hit = True
+        lines = lines[:-1]
+    active_jobs = _parse("\n".join(lines))
+    job_dict = {j['id']: j for j in active_jobs}
+
+    if include_history:
+        cmd_hist = "qstat -xf -t"
         if max_jobs:
-            # Limit the number of jobs returned to speed up queries on large clusters
-            cmd = (
-                f"qstat -{'x' if include_history else ''}f | "
-                f"awk '/Job Id:/{{if (count++=={max_jobs}) exit}} {{print}}'"
+            cmd_hist = (
+                f"{cmd_hist} | awk '/Job Id:/{{if (count++=={max_jobs}) exit}} {{print}}'"
             )
-        output = run_command(cmd)
-        if not output:
-            return []
+        hist_out = run_command(cmd_hist) or ""
+        for job in _parse(hist_out):
+            job_dict.setdefault(job['id'], job)
 
-    jobs = []
-    current_job = None
-
-    for line in output.splitlines():
-        # Match job ID line
-        job_match = re.match(r'^Job Id: (.+)$', line)
-        if job_match:
-            if current_job:
-                jobs.append(current_job)
-            current_job = {'id': job_match.group(1), 'user': None, 'ncpus': 0,
-                           'cpu_usage': 0, 'mem_usage': 0, 'gpu_usage': 0,
-                           'state': None}
-            continue
-
-        if not current_job:
-            continue
-
-        # Match job name
-        name_match = re.search(r'Job_Name = (.+)', line)
-        if name_match:
-            current_job['name'] = name_match.group(1)
-
-        # Match queue
-        queue_match = re.search(r'queue = (.+)', line)
-        if queue_match:
-            current_job['queue'] = queue_match.group(1)
-
-        # Match job owner
-        owner_match = re.search(r'Job_Owner = (.+)@', line)
-        if owner_match:
-            current_job['user'] = owner_match.group(1)
-
-        # Match job state
-        state_match = re.search(r'job_state = ([A-Z])', line)
-        if state_match:
-            current_job['state'] = state_match.group(1)
-
-        # Queue and start times
-        qtime_match = re.search(r'qtime = (.+)', line)
-        if qtime_match:
-            try:
-                dt = datetime.strptime(qtime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
-                current_job['qtime'] = int(dt.timestamp())
-            except ValueError:
-                pass
-
-        stime_match = re.search(r'stime = (.+)', line)
-        if stime_match:
-            try:
-                dt = datetime.strptime(stime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
-                current_job['start_time'] = int(dt.timestamp())
-            except ValueError:
-                pass
-
-        # Finished time
-        obit_match = re.search(r'obittime = (.+)', line)
-        if obit_match:
-            try:
-                dt = datetime.strptime(obit_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
-                current_job['obittime'] = int(dt.timestamp())
-            except ValueError:
-                pass
-
-        mtime_match = re.search(r'mtime = (.+)', line)
-        if mtime_match:
-            try:
-                dt = datetime.strptime(mtime_match.group(1).strip(), "%a %b %d %H:%M:%S %Y")
-                current_job['mtime'] = int(dt.timestamp())
-            except ValueError:
-                pass
-
-        # Match resource usage and requests
-        if 'resources_used' in line or 'Resource_List' in line:
-            # ncpus requested
-            cpu_match = re.search(r'Resource_List.ncpus = (\d+)', line)
-            if cpu_match:
-                current_job['ncpus'] = int(cpu_match.group(1))
-
-            # CPU percentage
-            cpu_match = re.search(r'resources_used.cpupercent = (\d+)', line)
-            if cpu_match:
-                current_job['cpupercent'] = int(cpu_match.group(1))
-
-            ncpus_used_match = re.search(r'resources_used.ncpus = (\d+)', line)
-            if ncpus_used_match:
-                current_job['ncpus_used'] = int(ncpus_used_match.group(1))
-
-            # Memory usage
-            if 'resources_used.mem' in line:
-                mem_match1 = re.search(r'resources_used.mem = (\d+)kb', line)
-                mem_match2 = re.search(r'resources_used.mem = (\d+)gb', line)
-                mem_match3 = re.search(r'resources_used.mem = 0b', line)
-                if mem_match1:
-                    current_job['mem_usage'] = int(mem_match1.group(1))
-                elif mem_match2:
-                    current_job['mem_usage'] = int(mem_match2.group(1)) * 1024 * 1024
-                elif mem_match3:
-                    current_job['mem_usage'] = 0
-                else:
-                    raise Exception("Unknown memory unit from line: " + line)
-
-            # Memory requested
-            mem_req_match = re.search(r'Resource_List.mem = (\d+)([a-zA-Z]+)', line)
-            if mem_req_match:
-                val = int(mem_req_match.group(1))
-                unit = mem_req_match.group(2).lower()
-                if unit == 'gb':
-                    mem_gb = val
-                elif unit == 'mb':
-                    mem_gb = val / 1024
-                elif unit == 'kb':
-                    mem_gb = val / (1024 * 1024)
-                else:
-                    mem_gb = 0
-                current_job['mem_request_gb'] = mem_gb
-
-            # GPU
-            gpu_match = re.search(r'Resource_List.ngpus = (\d+)', line)
-            if gpu_match:
-                current_job['ngpus'] = int(gpu_match.group(1))
-
-            # walltime used
-            walltime_match = re.search(r'resources_used.walltime = (\d+):(\d+):(\d+)', line)
-            if walltime_match:
-                h, m, s = map(int, walltime_match.groups())
-                current_job['walltime_used'] = h * 3600 + m * 60 + s
-                if 'walltime_total' in current_job:
-                    current_job['walltime'] = current_job['walltime_total'] - current_job['walltime_used']
-
-            # CPU time used
-            cput_match = re.search(r'resources_used.cput = (\d+):(\d+):(\d+)', line)
-            if cput_match:
-                h, m, s = map(int, cput_match.groups())
-                current_job['cput_used'] = h * 3600 + m * 60 + s
-
-            # vmem used
-            vmem_match = re.search(r'resources_used.vmem = (\d+)([a-zA-Z]+)', line)
-            if vmem_match:
-                val = int(vmem_match.group(1))
-                unit = vmem_match.group(2).lower()
-                if unit == 'kb':
-                    vmem_kb = val
-                elif unit == 'mb':
-                    vmem_kb = val * 1024
-                elif unit == 'gb':
-                    vmem_kb = val * 1024 * 1024
-                else:
-                    vmem_kb = 0
-                current_job['vmem_used_kb'] = vmem_kb
-
-            # Requested walltime
-            walltime_match = re.search(r'Resource_List.walltime = (\d+):(\d+):(\d+)', line)
-            if walltime_match:
-                h, m, s = map(int, walltime_match.groups())
-                requested_walltime = h * 3600 + m * 60 + s
-                current_job['walltime_total'] = requested_walltime
-                # Deduct the time already used, if already running
-                if 'walltime_used' in current_job:
-                    current_job['walltime'] = requested_walltime - current_job['walltime_used']
-                else:
-                    current_job['walltime'] = requested_walltime
-                # The true cpu time ncpus * walltime
-                current_job['cpu_usage_remaining'] = current_job['ncpus'] * current_job['walltime']
-                # gpus
-                if 'ngpus' in current_job:
-                    current_job['gpu_usage_remaining'] = current_job['ngpus'] * current_job['walltime']
-        exit_match = re.search(r'Exit_status = (\d+)', line)
-        if exit_match:
-            current_job['exit_status'] = int(exit_match.group(1))
-
-    # Add the last job
-    if current_job:
-        jobs.append(current_job)
-
-    return jobs
+    return list(job_dict.values())
 
 def get_job_status_counts(jobs):
     """Count jobs by status (running, queued, held)."""
@@ -755,6 +750,9 @@ def job_table(jobs, finished=False):
                 r[15].ljust(note_w),
             ]
             lines.append("  ".join(parts))
+        if parse_qstat.limit_hit:
+            warning = f"{Colors.BOLD}{Colors.RED}WARNING: job list truncated; running/queued jobs may be missing{Colors.ENDC}"
+            lines.insert(0, warning)
         return lines
     else:
         cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
@@ -790,6 +788,9 @@ def job_table(jobs, finished=False):
                 r[11].ljust(note_w),
             ]
             lines.append("  ".join(parts))
+        if parse_qstat.limit_hit:
+            warning = f"{Colors.BOLD}{Colors.RED}WARNING: job list truncated; running/queued jobs may be missing{Colors.ENDC}"
+            lines.insert(0, warning)
         return lines
 
 

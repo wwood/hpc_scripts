@@ -445,19 +445,27 @@ def main() -> None:
                 refresh = False
 
             stdscr.erase()
+            warning = None
+            if mqstat.parse_qstat.limit_hit:
+                warning = "\x1b[1m\x1b[91mWARNING: job list truncated; running/queued jobs may be missing\x1b[0m"
             page = maxy - 2
             if lines:
                 max_sel = len(lines) - 1
                 selected = min(max(1, selected), max_sel)
-                offset = max(0, min(offset, max_sel - page))
+                vis_rows = page - (1 if warning else 0)
+                offset = max(0, min(offset, max_sel - vis_rows))
                 if selected < offset + 1:
                     offset = selected - 1
-                elif selected > offset + page:
-                    offset = selected - page
-                draw_line(stdscr, 0, lines[0], maxx, highlight=True)
-                visible = lines[1 + offset : 1 + offset + page]
-                for i, line in enumerate(visible, start=1):
-                    draw_line(stdscr, i, line, maxx, highlight=(offset + i == selected))
+                elif selected > offset + vis_rows:
+                    offset = selected - vis_rows
+                y = 0
+                if warning:
+                    draw_line(stdscr, 0, warning, maxx)
+                    y = 1
+                draw_line(stdscr, y, lines[0], maxx, highlight=True)
+                visible = lines[1 + offset : 1 + offset + vis_rows]
+                for i, line in enumerate(visible, start=y + 1):
+                    draw_line(stdscr, i, line, maxx, highlight=(offset + i - y == selected))
             else:
                 offset = 0
                 selected = 1
