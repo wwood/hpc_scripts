@@ -625,7 +625,7 @@ def job_table(jobs, finished=False):
         ncpus_used = job.get('ncpus_used', job.get('ncpus', 0))
         if cpupercent is not None and ncpus_used:
             if cpupercent < ncpus_used * 10:
-                note = '❗ over-resourced? <10% of CPU used'
+                note = '❗ <10% of CPU used'
 
         waited = ''
         qtime = job.get('qtime')
