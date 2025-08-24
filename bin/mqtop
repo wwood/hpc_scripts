@@ -300,9 +300,12 @@ def main() -> None:
         curses.init_pair(1, curses.COLOR_GREEN, -1)
         curses.init_pair(2, curses.COLOR_RED, -1)
         curses.init_pair(3, curses.COLOR_YELLOW, -1)
-        try:
-            curses.init_pair(4, 208, -1)  # orange if terminal supports it
-        except curses.error:
+        if getattr(curses, "COLORS", 8) > 208:
+            try:
+                curses.init_pair(4, 208, -1)  # orange if terminal supports it
+            except (curses.error, ValueError):
+                curses.init_pair(4, curses.COLOR_YELLOW, -1)
+        else:
             curses.init_pair(4, curses.COLOR_YELLOW, -1)
         stdscr.nodelay(True)
         stdscr.keypad(True)
