@@ -625,7 +625,7 @@ def job_table(jobs, finished=False):
         ncpus_used = job.get('ncpus_used', job.get('ncpus', 0))
         if cpupercent is not None and ncpus_used:
             if cpupercent < ncpus_used * 10:
-                note = '❗ over-resourced? <10% of CPU used'
+                note = '❗ <10% of CPU used'
 
         waited = ''
         qtime = job.get('qtime')
@@ -885,18 +885,12 @@ def watch_jobs(get_jobs, interval=2):
 def main():
     parser = argparse.ArgumentParser(description="Cluster Usage Monitor")
     parser.add_argument("--list", action="store_true", help="Summarise qstat -f output")
-    parser.add_argument("--watch", action="store_true", help="Continuously watch job list")
     parser.add_argument("--qstat-file", help="Use qstat -f output from file")
     args = parser.parse_args()
 
     if args.list:
         jobs = parse_qstat(path=args.qstat_file)
         list_jobs(jobs)
-        return
-    if args.watch:
-        def get_jobs(include_history=False):
-            return parse_qstat(path=args.qstat_file, include_history=include_history)
-        watch_jobs(get_jobs)
         return
 
     # Get node data

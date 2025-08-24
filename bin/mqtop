@@ -1,0 +1,536 @@
+#!/usr/bin/env python3
+"""Interactive job viewer similar to ``htop``.
+
+This tool combines running and recently finished jobs into a single table
+and allows selecting rows to inspect job logs.
+"""
+
+import argparse
+import importlib.util
+import os
+import re
+import subprocess
+import time
+import unicodedata
+from importlib.machinery import SourceFileLoader
+
+import curses
+
+
+def _load_script(name):
+    """Load a script from ``bin`` as a module."""
+
+    path = os.path.join(os.path.dirname(__file__), name)
+    loader = SourceFileLoader(f"{name}_module", path)
+    spec = importlib.util.spec_from_loader(f"{name}_module", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+mqstat = _load_script("mqstat")
+mqsub = _load_script("mqsub")
+
+
+ansi_re = re.compile(r"\x1b\[(\d+)m(.*?)\x1b\[0m")
+# basic ANSI colour escapes used for row colouring
+ORANGE = "\033[33m"
+
+
+def strip_ansi(text: str) -> str:
+    """Return *text* with ANSI colour escapes removed."""
+
+    return ansi_re.sub(r"\2", text)
+
+
+def visible_len(text: str) -> int:
+    """Length of *text* ignoring ANSI colour escapes."""
+
+    return len(strip_ansi(text))
+
+
+def ljust_ansi(text: str, width: int) -> str:
+    pad = max(width - visible_len(text), 0)
+    return text + " " * pad
+
+
+def rjust_ansi(text: str, width: int) -> str:
+    pad = max(width - visible_len(text), 0)
+    return " " * pad + text
+
+
+def _width(ch):
+    if unicodedata.combining(ch):
+        return 0
+    return 2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+
+
+def addstr_safe(stdscr, y, x, text, maxx, attr=0):
+    width = 0
+    out = []
+    for ch in text:
+        w = _width(ch)
+        if x + width + w > maxx - 1:
+            break
+        out.append(ch)
+        width += w
+    if out:
+        try:
+            stdscr.addstr(y, x, "".join(out), attr)
+        except curses.error:
+            pass
+    return width
+
+
+def draw_line(stdscr, y, line, maxx, highlight=False):
+    """Draw a line that may contain ANSI colour escape codes."""
+
+    x = 0
+    last = 0
+    attr = curses.A_REVERSE if highlight else 0
+    for match in ansi_re.finditer(line):
+        x += addstr_safe(stdscr, y, x, line[last:match.start()], maxx, attr)
+        colour = match.group(1)
+        pair = {"92": 1, "91": 2, "93": 3, "33": 4}.get(colour, 0)
+        colour_pair = curses.color_pair(pair)
+        x += addstr_safe(stdscr, y, x, match.group(2), maxx, colour_pair | attr)
+        last = match.end()
+        if x >= maxx - 1:
+            break
+    if x < maxx - 1 and last < len(line):
+        addstr_safe(stdscr, y, x, line[last:], maxx, attr)
+
+
+def sort_jobs(jobs, now=None, show_queued=True):
+    """Return *jobs* ordered by state and relevant times.
+
+    Running jobs are listed first, ordered by descending walltime used.
+    Queued jobs follow, ordered by longest wait time first.  Finished jobs
+    appear last with the most recently completed first.  Jobs from the
+    ``cpu_inter_exec`` queue are omitted.  When ``show_queued`` is ``False``
+    queued jobs are excluded entirely.
+    """
+
+    if now is None:
+        now = time.time()
+
+    running, queued, finished = [], [], []
+    for job in jobs:
+        if job.get("queue") == "cpu_inter_exec":
+            continue
+        state = job.get("state")
+        if state in ("C", "F"):
+            finished.append(job)
+        elif state == "Q":
+            queued.append(job)
+        else:
+            running.append(job)
+
+    running.sort(key=lambda j: j.get("walltime_used", 0), reverse=True)
+
+    def _wait(j):
+        q = j.get("qtime") or now
+        return now - q
+
+    queued.sort(key=_wait, reverse=True)
+
+    def _finished_time(j):
+        return j.get("obittime") or j.get("mtime") or 0
+
+    finished.sort(key=_finished_time, reverse=True)
+
+    ordered = running
+    if show_queued:
+        ordered += queued
+    ordered += finished
+    return ordered
+
+
+def format_jobs(jobs, now=None, return_rows=False):
+    """Return formatted job table lines and corresponding job objects.
+
+    When *return_rows* is ``True`` the computed row dictionaries are also
+    returned for introspection in tests."""
+
+    if now is None:
+        now = time.time()
+
+    rows = []
+    headers = [
+        "job_id",
+        "name",
+        "time used",
+        "progress",
+        "walltime",
+        "waited",
+        "age",
+        "CPU",
+        "cpu%",
+        "RAM(G)",
+        "ram%",
+        "state",
+        "queue",
+        "note",
+    ]
+
+    for job in jobs:
+        if job.get("queue") == "cpu_inter_exec":
+            continue
+        queue = job.get("queue", "").replace("_batch_exec", "")
+        job_id = job.get("id", "")
+        name = job.get("name", "")
+        used_s = job.get("walltime_used", 0)
+        total_s = job.get("walltime_total", job.get("walltime", 0))
+        used = mqstat.format_hm(used_s)
+        total = mqstat.format_hm(total_s)
+        bar = mqstat.progress_bar(used_s, total_s)
+        waited = ""
+        qtime = job.get("qtime")
+        start_time = job.get("start_time")
+        if qtime:
+            if start_time is None:
+                waited = mqstat.format_hm(int(now - qtime))
+            elif start_time >= qtime:
+                waited = mqstat.format_hm(int(start_time - qtime))
+
+        age = ""
+        if job.get("state") in ("C", "F"):
+            end_t = job.get("obittime") or job.get("mtime")
+            if end_t:
+                age = mqstat.format_hm(int(now - end_t))
+
+        cpu = job.get("ncpus", 0)
+        cpupercent = job.get("cpupercent")
+        ncpus_used = job.get("ncpus_used", cpu)
+        cpu_util = 0
+        if job.get("state") in ("C", "F"):
+            cput_used = job.get("cput_used", 0)
+            if used_s and cpu:
+                cpu_util = cput_used / (used_s * cpu) * 100
+        elif cpupercent is not None and ncpus_used:
+            cpu_util = cpupercent / ncpus_used
+        cpu_util_str = f"{int(cpu_util)}%" if cpu_util else ""
+        cpu_low = cpu_util and cpu_util < 10
+        short_run = used_s <= 120
+
+        ram = int(job.get("mem_request_gb", 0))
+        vmem_kb = job.get("vmem_used_kb") or job.get("mem_usage", 0)
+        ram_util = (vmem_kb / (ram * 1024 * 1024) * 100) if ram else 0
+        ram_util_str = f"{int(ram_util)}%" if ram_util else ""
+        ram_low = ram_util and ram_util < 10
+
+        state = job.get("state", "")
+        note = ""
+        if state not in ("C", "F"):
+            if cpupercent is not None and ncpus_used and cpupercent < ncpus_used * 10:
+                note = "❗ <10% of CPU used"
+        else:
+            if used_s < 60:
+                note = "short"
+            elif cpu_low and ram_low:
+                note = "<10% CPU, <10% RAM"
+            elif cpu_low:
+                note = "<10% CPU"
+            elif ram_low:
+                note = "<10% RAM"
+            if job.get("exit_status", 0) != 0:
+                note = "!" + note
+
+        cpu_field = (
+            mqstat.Colors.RED + cpu_util_str + mqstat.Colors.ENDC
+            if cpu_low and not short_run
+            else cpu_util_str
+        )
+        ram_field = (
+            mqstat.Colors.RED + ram_util_str + mqstat.Colors.ENDC
+            if ram_low and not short_run
+            else ram_util_str
+        )
+
+        row_color = ""
+        if state == "Q":
+            row_color = mqstat.Colors.YELLOW
+        elif state in ("C", "F"):
+            row_color = (
+                mqstat.Colors.GREEN
+                if job.get("exit_status", 0) == 0
+                else mqstat.Colors.RED
+            )
+        elif state != "R":
+            row_color = ORANGE
+
+        rows.append(
+            {
+                "job_id": job_id,
+                "name": name,
+                "used": used,
+                "bar": bar,
+                "wall": total,
+                "waited": waited,
+                "cpu": str(cpu),
+                "cpu_util": cpu_field,
+                "ram": str(ram),
+                "ram_util": ram_field,
+                "state": state,
+                "queue": queue,
+                "note": note,
+                "age": age,
+                "raw": job,
+                "row_color": row_color,
+            }
+        )
+
+    if not rows:
+        empty = ["  ".join(headers)]
+        return (empty, [], []) if return_rows else (empty, [])
+
+    id_w = max(len(headers[0]), max(visible_len(r["job_id"]) for r in rows))
+    name_w = max(len(headers[1]), max(visible_len(r["name"]) for r in rows))
+    time_w = len(headers[2])
+    wall_w = max(len(headers[4]), max(visible_len(r["wall"]) for r in rows))
+    wait_w = max(len(headers[5]), max(visible_len(r["waited"]) for r in rows))
+    age_w = max(len(headers[6]), max(visible_len(r["age"]) for r in rows))
+    cpu_w = max(len(headers[7]), max(visible_len(r["cpu"]) for r in rows))
+    cpuu_w = max(len(headers[8]), max(visible_len(r["cpu_util"]) for r in rows))
+    ram_w = max(len(headers[9]), max(visible_len(r["ram"]) for r in rows))
+    ramu_w = max(len(headers[10]), max(visible_len(r["ram_util"]) for r in rows))
+    state_w = max(len(headers[11]), max(visible_len(r["state"]) for r in rows))
+    queue_w = max(len(headers[12]), max(visible_len(r["queue"]) for r in rows))
+    note_w = max(len(headers[13]), max(visible_len(r["note"]) for r in rows))
+
+    header_parts = [
+        headers[0].ljust(id_w),
+        headers[1].ljust(name_w),
+        headers[2].ljust(time_w),
+        headers[3].ljust(20),
+        headers[4].ljust(wall_w),
+        headers[5].ljust(wait_w),
+        headers[6].ljust(age_w),
+        headers[7].rjust(cpu_w),
+        headers[8].rjust(cpuu_w),
+        headers[9].rjust(ram_w),
+        headers[10].rjust(ramu_w),
+        headers[11].ljust(state_w),
+        headers[12].ljust(queue_w),
+        headers[13].ljust(note_w),
+    ]
+    lines = ["  ".join(header_parts)]
+
+    for r in rows:
+        parts = [
+            ljust_ansi(r["job_id"], id_w),
+            ljust_ansi(r["name"], name_w),
+            ljust_ansi(r["used"], time_w),
+            r["bar"],
+            ljust_ansi(r["wall"], wall_w),
+            ljust_ansi(r["waited"], wait_w),
+            ljust_ansi(r["age"], age_w),
+            rjust_ansi(r["cpu"], cpu_w),
+            rjust_ansi(r["cpu_util"], cpuu_w),
+            rjust_ansi(r["ram"], ram_w),
+            rjust_ansi(r["ram_util"], ramu_w),
+            ljust_ansi(r["state"], state_w),
+            ljust_ansi(r["queue"], queue_w),
+            ljust_ansi(r["note"], note_w),
+        ]
+        coloured_parts = []
+        row_colour = r.get("row_color", "")
+        for idx, part in enumerate(parts):
+            if idx == 3:  # progress column
+                coloured_parts.append(part)
+            elif row_colour and not ansi_re.search(part):
+                coloured_parts.append(row_colour + part + mqstat.Colors.ENDC)
+            else:
+                coloured_parts.append(part)
+        lines.append("  ".join(coloured_parts))
+
+    jobs_out = [r["raw"] for r in rows]
+    if return_rows:
+        return lines, jobs_out, rows
+    return lines, jobs_out
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Interactive job viewer")
+    parser.add_argument("--qstat-file", help="Use qstat -f output from file", default=None)
+    args = parser.parse_args()
+
+    def get_jobs(include_history: bool = False):
+        return mqstat.parse_qstat(path=args.qstat_file, include_history=include_history)
+
+    def _draw(stdscr):
+        curses.curs_set(0)
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_GREEN, -1)
+        curses.init_pair(2, curses.COLOR_RED, -1)
+        curses.init_pair(3, curses.COLOR_YELLOW, -1)
+        if getattr(curses, "COLORS", 8) > 208:
+            try:
+                curses.init_pair(4, 208, -1)  # orange if terminal supports it
+            except (curses.error, ValueError):
+                curses.init_pair(4, curses.COLOR_YELLOW, -1)
+        else:
+            curses.init_pair(4, curses.COLOR_YELLOW, -1)
+        stdscr.nodelay(True)
+        stdscr.keypad(True)
+        curses.mousemask(curses.BUTTON1_CLICKED)
+
+        finished = {}
+        show_queued = True
+        selected = 1  # absolute selected row index (1..)
+        offset = 0  # topmost job line displayed (0-based)
+        lines, job_rows = [], []
+        refresh = True
+
+        while True:
+            maxy, maxx = stdscr.getmaxyx()
+            key = stdscr.getch()
+            if key == ord("q"):
+                break
+            elif key == curses.KEY_MOUSE:
+                try:
+                    _, _, my, _, _ = curses.getmouse()
+                except curses.error:
+                    pass
+                else:
+                    if 1 <= my < min(len(lines), maxy - 1):
+                        selected = min(offset + my, len(lines) - 1)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                if lines:
+                    selected = min(selected + 1, len(lines) - 1)
+            elif key in (curses.KEY_UP, ord("k")):
+                if lines:
+                    selected = max(1, selected - 1)
+            elif key == curses.KEY_NPAGE:
+                if lines:
+                    page = maxy - 2
+                    selected = min(len(lines) - 1, selected + page)
+            elif key == curses.KEY_PPAGE:
+                if lines:
+                    page = maxy - 2
+                    selected = max(1, selected - page)
+            elif key in (ord("l"), ord("o"), ord("e")):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    state = job.get("state")
+                    if state in ("C", "F"):
+                        try:
+                            stdout_path, stderr_path = mqsub.PbsJobInfo.stdout_and_stderr_paths(job["id"])
+                        except Exception:
+                            stdout_path = stderr_path = None
+                        if key == ord("e"):
+                            path = stderr_path
+                            suffix = "ER"
+                        else:
+                            path = stdout_path
+                            suffix = "OU"
+                        if path and os.path.isdir(path):
+                            path = os.path.join(path, f"{job['id']}.{suffix}")
+                        if path and os.path.exists(path):
+                            curses.endwin()
+                            subprocess.call(["less", path])
+                            stdscr.clear()
+                            curses.curs_set(0)
+                    elif state == "R":
+                        suffix = "ER" if key == ord("e") else "OU"
+                        cmd = (
+                            f"/pkg/hpc/scripts/ssh-to-job {job['id']} cat /var/spool/PBS/spool/{job['id']}.{suffix} | less"
+                        )
+                        curses.endwin()
+                        subprocess.call(cmd, shell=True)
+                        stdscr.clear()
+                        curses.curs_set(0)
+            elif key == ord("f"):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    cmd = f"qstat -xf {job['id']} | less"
+                    curses.endwin()
+                    subprocess.call(cmd, shell=True)
+                    stdscr.clear()
+                    curses.curs_set(0)
+            elif key == ord("s"):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    if job.get("state") == "R":
+                        curses.endwin()
+                        subprocess.call(["/pkg/hpc/scripts/ssh-to-job", str(job["id"])])
+                        stdscr.clear()
+                        curses.curs_set(0)
+            elif key == ord("/"):
+                curses.echo()
+                stdscr.nodelay(False)
+                stdscr.move(maxy - 1, 0)
+                stdscr.clrtoeol()
+                stdscr.addstr(maxy - 1, 0, "/")
+                try:
+                    query = stdscr.getstr(maxy - 1, 1).decode()
+                except Exception:
+                    query = ""
+                stdscr.nodelay(True)
+                curses.noecho()
+                if query:
+                    ql = query.lower()
+                    for idx, job in enumerate(job_rows, start=1):
+                        if ql in job.get("name", "").lower() or ql in str(job.get("id", "")).lower():
+                            selected = idx
+                            break
+            elif key == ord("r"):
+                refresh = True
+            elif key == ord("u"):
+                show_queued = not show_queued
+                refresh = True
+
+            if refresh:
+                jobs = get_jobs(include_history=True)
+                now = time.time()
+                running = []
+                for job in jobs:
+                    if job.get("queue") == "cpu_inter_exec":
+                        continue
+                    if job.get("state") in ("C", "F"):
+                        ft = job.get("obittime") or job.get("mtime", now)
+                        if now - ft <= 24 * 3600:
+                            finished[job["id"]] = job
+                    else:
+                        running.append(job)
+                for jid, job in list(finished.items()):
+                    ft = job.get("obittime") or job.get("mtime", now)
+                    if now - ft > 24 * 3600 or job.get("queue") == "cpu_inter_exec":
+                        finished.pop(jid, None)
+
+                all_jobs = running + list(finished.values())
+                ordered = sort_jobs(all_jobs, now=now, show_queued=show_queued)
+                lines, job_rows = format_jobs(ordered, now=now)
+                refresh = False
+
+            stdscr.erase()
+            page = maxy - 2
+            if lines:
+                max_sel = len(lines) - 1
+                selected = min(max(1, selected), max_sel)
+                offset = max(0, min(offset, max_sel - page))
+                if selected < offset + 1:
+                    offset = selected - 1
+                elif selected > offset + page:
+                    offset = selected - page
+                draw_line(stdscr, 0, lines[0], maxx, highlight=True)
+                visible = lines[1 + offset : 1 + offset + page]
+                for i, line in enumerate(visible, start=1):
+                    draw_line(stdscr, i, line, maxx, highlight=(offset + i == selected))
+            else:
+                offset = 0
+                selected = 1
+            help_text = (
+                "q quit  / search  o stdout  e stderr  f full  s ssh  r refresh  u toggle queued"
+            )
+            addstr_safe(stdscr, maxy - 1, 0, help_text, maxx)
+            stdscr.refresh()
+            time.sleep(0.1)
+
+    curses.wrapper(_draw)
+
+
+if __name__ == "__main__":
+    main()
+

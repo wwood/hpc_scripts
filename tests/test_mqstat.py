@@ -69,7 +69,8 @@ def test_mqstat_list():
     assert rows[2][7] == "R"
     assert rows[2][8] == "batch"
     assert rows[2][9].startswith("❗")
-    assert "over-resourced" in rows[2][9]
+    assert "over-resourced" not in rows[2][9]
+    assert "<10% of CPU used" in rows[2][9]
     assert "💪" in lines[3]
     assert "\x1b[92m" in lines[3]
 

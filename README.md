@@ -139,6 +139,14 @@ sternesp CPUs queued: 0
 Non-microbiome group jobs / CPU: 0 / 0 (0.0%)
 ```
 
+For an interactive view of job status, use `mqtop`. Navigate with the arrow
+keys or `j`/`k`, or select rows with the mouse. Press `/` to search by job name
+or ID. `l` or `o` shows a job's stdout log (using `ssh-to-job` for running
+jobs), `e` shows stderr, `f` runs `qstat -xf` for full details, `s` opens an
+interactive shell on a running job, `r` refreshes the display and `u` toggles
+display of queued jobs. A help footer summarises these keys. This command
+replaces the old `mqstat --watch` option.
+
 You can also view a detailed breakdown queued and running jobs on a per-user basis by typing `mqstat --list`. Example output:
 ```
 List of jobs in queue:
