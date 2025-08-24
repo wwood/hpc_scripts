@@ -309,7 +309,8 @@ def main() -> None:
         curses.mousemask(curses.BUTTON1_CLICKED)
 
         finished = {}
-        selected = 1
+        selected = 1  # absolute selected row index (1..)
+        offset = 0  # topmost job line displayed (0-based)
         lines, job_rows = [], []
         refresh = True
 
@@ -325,13 +326,21 @@ def main() -> None:
                     pass
                 else:
                     if 1 <= my < min(len(lines), maxy - 1):
-                        selected = my
+                        selected = min(offset + my, len(lines) - 1)
             elif key in (curses.KEY_DOWN, ord("j")):
                 if lines:
-                    selected = min(selected + 1, len(lines) - 1, maxy - 2)
+                    selected = min(selected + 1, len(lines) - 1)
             elif key in (curses.KEY_UP, ord("k")):
                 if lines:
                     selected = max(1, selected - 1)
+            elif key == curses.KEY_NPAGE:
+                if lines:
+                    page = maxy - 2
+                    selected = min(len(lines) - 1, selected + page)
+            elif key == curses.KEY_PPAGE:
+                if lines:
+                    page = maxy - 2
+                    selected = max(1, selected - page)
             elif key in (ord("l"), ord("o"), ord("e")):
                 if 0 < selected <= len(job_rows):
                     job = job_rows[selected - 1]
@@ -423,12 +432,23 @@ def main() -> None:
                 refresh = False
 
             stdscr.erase()
+            page = maxy - 2
             if lines:
-                selected = max(1, min(selected, len(lines) - 1, maxy - 2))
+                max_sel = len(lines) - 1
+                selected = min(max(1, selected), max_sel)
+                offset = max(0, min(offset, max_sel - page))
+                if selected < offset + 1:
+                    offset = selected - 1
+                elif selected > offset + page:
+                    offset = selected - page
                 draw_line(stdscr, 0, lines[0], maxx, highlight=True)
-                for i, line in enumerate(lines[1: maxy - 1], start=1):
-                    draw_line(stdscr, i, line, maxx, highlight=(i == selected))
-            help_text = "q quit  / search  l/o stdout  e stderr  f full  s ssh  r refresh"
+                visible = lines[1 + offset : 1 + offset + page]
+                for i, line in enumerate(visible, start=1):
+                    draw_line(stdscr, i, line, maxx, highlight=(offset + i == selected))
+            else:
+                offset = 0
+                selected = 1
+            help_text = "q quit  / search  o stdout  e stderr  f full  s ssh  r refresh"
             addstr_safe(stdscr, maxy - 1, 0, help_text, maxx)
             stdscr.refresh()
             time.sleep(0.1)
