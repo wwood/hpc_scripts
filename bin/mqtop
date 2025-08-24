@@ -335,7 +335,8 @@ def main() -> None:
             elif key in (ord("l"), ord("o"), ord("e")):
                 if 0 < selected <= len(job_rows):
                     job = job_rows[selected - 1]
-                    if job.get("state") in ("C", "F"):
+                    state = job.get("state")
+                    if state in ("C", "F"):
                         try:
                             stdout_path, stderr_path = mqsub.PbsJobInfo.stdout_and_stderr_paths(job["id"])
                         except Exception:
@@ -353,6 +354,31 @@ def main() -> None:
                             subprocess.call(["less", path])
                             stdscr.clear()
                             curses.curs_set(0)
+                    elif state == "R":
+                        suffix = "ER" if key == ord("e") else "OU"
+                        cmd = (
+                            f"/pkg/hpc/scripts/ssh-to-job {job['id']} cat /var/spool/PBS/spool/{job['id']}.{suffix} | less"
+                        )
+                        curses.endwin()
+                        subprocess.call(cmd, shell=True)
+                        stdscr.clear()
+                        curses.curs_set(0)
+            elif key == ord("f"):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    cmd = f"qstat -xf {job['id']} | less"
+                    curses.endwin()
+                    subprocess.call(cmd, shell=True)
+                    stdscr.clear()
+                    curses.curs_set(0)
+            elif key == ord("s"):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    if job.get("state") == "R":
+                        curses.endwin()
+                        subprocess.call(["/pkg/hpc/scripts/ssh-to-job", str(job["id"])])
+                        stdscr.clear()
+                        curses.curs_set(0)
             elif key == ord("/"):
                 curses.echo()
                 stdscr.nodelay(False)
@@ -402,7 +428,7 @@ def main() -> None:
                 draw_line(stdscr, 0, lines[0], maxx, highlight=True)
                 for i, line in enumerate(lines[1: maxy - 1], start=1):
                     draw_line(stdscr, i, line, maxx, highlight=(i == selected))
-            help_text = "q quit  / search  o stdout  e stderr  r refresh"
+            help_text = "q quit  / search  l/o stdout  e stderr  f full  s ssh  r refresh"
             addstr_safe(stdscr, maxy - 1, 0, help_text, maxx)
             stdscr.refresh()
             time.sleep(0.1)
