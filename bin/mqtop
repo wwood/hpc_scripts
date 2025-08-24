@@ -33,6 +33,8 @@ mqsub = _load_script("mqsub")
 
 
 ansi_re = re.compile(r"\x1b\[(\d+)m(.*?)\x1b\[0m")
+# basic ANSI colour escapes used for row colouring
+ORANGE = "\033[33m"
 
 
 def strip_ansi(text: str) -> str:
@@ -89,7 +91,8 @@ def draw_line(stdscr, y, line, maxx, highlight=False):
     for match in ansi_re.finditer(line):
         x += addstr_safe(stdscr, y, x, line[last:match.start()], maxx, attr)
         colour = match.group(1)
-        colour_pair = curses.color_pair(1 if colour == "92" else 2)
+        pair = {"92": 1, "91": 2, "93": 3, "33": 4}.get(colour, 0)
+        colour_pair = curses.color_pair(pair)
         x += addstr_safe(stdscr, y, x, match.group(2), maxx, colour_pair | attr)
         last = match.end()
         if x >= maxx - 1:
@@ -187,16 +190,16 @@ def format_jobs(jobs, now=None):
         )
 
         row_color = ""
-        if state not in ("C", "F"):
-            row_color = mqstat.Colors.GREEN
-        else:
-            end_time = job.get("obittime") or job.get("mtime")
-            if end_time and now - end_time < 600:
-                row_color = (
-                    mqstat.Colors.YELLOW
-                    if job.get("exit_status", 0) == 0
-                    else mqstat.Colors.RED
-                )
+        if state == "Q":
+            row_color = mqstat.Colors.YELLOW
+        elif state in ("C", "F"):
+            row_color = (
+                mqstat.Colors.GREEN
+                if job.get("exit_status", 0) == 0
+                else mqstat.Colors.RED
+            )
+        elif state != "R":
+            row_color = ORANGE
 
         rows.append(
             {
@@ -296,6 +299,11 @@ def main() -> None:
         curses.use_default_colors()
         curses.init_pair(1, curses.COLOR_GREEN, -1)
         curses.init_pair(2, curses.COLOR_RED, -1)
+        curses.init_pair(3, curses.COLOR_YELLOW, -1)
+        try:
+            curses.init_pair(4, 208, -1)  # orange if terminal supports it
+        except curses.error:
+            curses.init_pair(4, curses.COLOR_YELLOW, -1)
         stdscr.nodelay(True)
 
         finished = {}
@@ -313,17 +321,25 @@ def main() -> None:
             elif key in (curses.KEY_UP, ord("k")):
                 if lines:
                     selected = max(1, selected - 1)
-            elif key in (ord("l"), ord("o")):
+            elif key in (ord("l"), ord("o"), ord("e")):
                 if 0 < selected <= len(job_rows):
                     job = job_rows[selected - 1]
                     if job.get("state") in ("C", "F"):
                         try:
-                            stdout_path, _ = mqsub.PbsJobInfo.stdout_and_stderr_paths(job["id"])
+                            stdout_path, stderr_path = mqsub.PbsJobInfo.stdout_and_stderr_paths(job["id"])
                         except Exception:
-                            stdout_path = None
-                        if stdout_path and os.path.exists(stdout_path):
+                            stdout_path = stderr_path = None
+                        if key == ord("e"):
+                            path = stderr_path
+                            suffix = "ER"
+                        else:
+                            path = stdout_path
+                            suffix = "OU"
+                        if path and os.path.isdir(path):
+                            path = os.path.join(path, f"{job['id']}.{suffix}")
+                        if path and os.path.exists(path):
                             curses.endwin()
-                            subprocess.call(["less", stdout_path])
+                            subprocess.call(["less", path])
                             stdscr.clear()
                             curses.curs_set(0)
             elif key == ord("r"):
@@ -353,8 +369,10 @@ def main() -> None:
 
             maxy, maxx = stdscr.getmaxyx()
             stdscr.erase()
-            for i, line in enumerate(lines[: maxy]):
-                draw_line(stdscr, i, line, maxx, highlight=(i == selected))
+            if lines:
+                draw_line(stdscr, 0, lines[0], maxx, highlight=True)
+                for i, line in enumerate(lines[1: maxy], start=1):
+                    draw_line(stdscr, i, line, maxx, highlight=(i == selected))
             stdscr.refresh()
             time.sleep(0.1)
 
