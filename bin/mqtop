@@ -288,10 +288,20 @@ def format_jobs(jobs, now=None):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Interactive job viewer")
     parser.add_argument("--qstat-file", help="Use qstat -f output from file", default=None)
+    parser.add_argument(
+        "--max-jobs",
+        type=int,
+        default=500,
+        help="Maximum number of jobs to load",
+    )
     args = parser.parse_args()
 
     def get_jobs(include_history: bool = False):
-        return mqstat.parse_qstat(path=args.qstat_file, include_history=include_history)
+        return mqstat.parse_qstat(
+            path=args.qstat_file,
+            include_history=include_history,
+            max_jobs=args.max_jobs,
+        )
 
     def _draw(stdscr):
         curses.curs_set(0)

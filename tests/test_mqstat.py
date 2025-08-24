@@ -107,6 +107,26 @@ def test_parse_qstat_finished_usage():
     assert finished['obittime'] - finished['start_time'] == 10 * 60
 
 
+def test_parse_qstat_max_jobs():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import os, runpy
+    os.environ.pop("MQSTAT_QSTAT_F", None)
+    mod = runpy.run_path(str(script))
+    captured = {}
+
+    def fake_run_command(cmd):
+        captured['cmd'] = cmd
+        return ""
+
+    mod['parse_qstat'].__globals__['run_command'] = fake_run_command
+    mod['parse_qstat'](max_jobs=10, include_history=True)
+    assert (
+        captured['cmd']
+        == "qstat -xf | awk '/Job Id:/{if (count++==10) exit} {print}'"
+    )
+
+
 def test_job_table_finished_util_and_note():
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqstat"

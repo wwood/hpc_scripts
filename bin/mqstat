@@ -111,7 +111,7 @@ def parse_pbsnodes_output():
 
     return nodes
 
-def parse_qstat(path=None, include_history=False):
+def parse_qstat(path=None, include_history=False, max_jobs=None):
     """Parse qstat output to get job information."""
     if path is None:
         path = os.environ.get("MQSTAT_QSTAT_F")
@@ -124,6 +124,12 @@ def parse_qstat(path=None, include_history=False):
         cmd = "qstat -f -t"
         if include_history:
             cmd = "qstat -xf -t"
+        if max_jobs:
+            # Limit the number of jobs returned to speed up queries on large clusters
+            cmd = (
+                f"qstat -{'x' if include_history else ''}f | "
+                f"awk '/Job Id:/{{if (count++=={max_jobs}) exit}} {{print}}'"
+            )
         output = run_command(cmd)
         if not output:
             return []
