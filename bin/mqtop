@@ -305,6 +305,8 @@ def main() -> None:
         except curses.error:
             curses.init_pair(4, curses.COLOR_YELLOW, -1)
         stdscr.nodelay(True)
+        stdscr.keypad(True)
+        curses.mousemask(curses.BUTTON1_CLICKED)
 
         finished = {}
         selected = 1
@@ -312,12 +314,21 @@ def main() -> None:
         refresh = True
 
         while True:
+            maxy, maxx = stdscr.getmaxyx()
             key = stdscr.getch()
             if key == ord("q"):
                 break
+            elif key == curses.KEY_MOUSE:
+                try:
+                    _, _, my, _, _ = curses.getmouse()
+                except curses.error:
+                    pass
+                else:
+                    if 1 <= my < min(len(lines), maxy - 1):
+                        selected = my
             elif key in (curses.KEY_DOWN, ord("j")):
                 if lines:
-                    selected = min(selected + 1, len(lines) - 1)
+                    selected = min(selected + 1, len(lines) - 1, maxy - 2)
             elif key in (curses.KEY_UP, ord("k")):
                 if lines:
                     selected = max(1, selected - 1)
@@ -342,6 +353,24 @@ def main() -> None:
                             subprocess.call(["less", path])
                             stdscr.clear()
                             curses.curs_set(0)
+            elif key == ord("/"):
+                curses.echo()
+                stdscr.nodelay(False)
+                stdscr.move(maxy - 1, 0)
+                stdscr.clrtoeol()
+                stdscr.addstr(maxy - 1, 0, "/")
+                try:
+                    query = stdscr.getstr(maxy - 1, 1).decode()
+                except Exception:
+                    query = ""
+                stdscr.nodelay(True)
+                curses.noecho()
+                if query:
+                    ql = query.lower()
+                    for idx, job in enumerate(job_rows, start=1):
+                        if ql in job.get("name", "").lower() or ql in str(job.get("id", "")).lower():
+                            selected = idx
+                            break
             elif key == ord("r"):
                 refresh = True
 
@@ -367,12 +396,14 @@ def main() -> None:
                 lines, job_rows = format_jobs(all_jobs, now=now)
                 refresh = False
 
-            maxy, maxx = stdscr.getmaxyx()
             stdscr.erase()
             if lines:
+                selected = max(1, min(selected, len(lines) - 1, maxy - 2))
                 draw_line(stdscr, 0, lines[0], maxx, highlight=True)
-                for i, line in enumerate(lines[1: maxy], start=1):
+                for i, line in enumerate(lines[1: maxy - 1], start=1):
                     draw_line(stdscr, i, line, maxx, highlight=(i == selected))
+            help_text = "q quit  / search  o stdout  e stderr  r refresh"
+            addstr_safe(stdscr, maxy - 1, 0, help_text, maxx)
             stdscr.refresh()
             time.sleep(0.1)
 
