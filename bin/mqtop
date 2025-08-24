@@ -35,6 +35,28 @@ mqsub = _load_script("mqsub")
 ansi_re = re.compile(r"\x1b\[(\d+)m(.*?)\x1b\[0m")
 
 
+def strip_ansi(text: str) -> str:
+    """Return *text* with ANSI colour escapes removed."""
+
+    return ansi_re.sub(r"\2", text)
+
+
+def visible_len(text: str) -> int:
+    """Length of *text* ignoring ANSI colour escapes."""
+
+    return len(strip_ansi(text))
+
+
+def ljust_ansi(text: str, width: int) -> str:
+    pad = max(width - visible_len(text), 0)
+    return text + " " * pad
+
+
+def rjust_ansi(text: str, width: int) -> str:
+    pad = max(width - visible_len(text), 0)
+    return " " * pad + text
+
+
 def _width(ch):
     if unicodedata.combining(ch):
         return 0
@@ -76,8 +98,11 @@ def draw_line(stdscr, y, line, maxx, highlight=False):
         addstr_safe(stdscr, y, x, line[last:], maxx, attr)
 
 
-def format_jobs(jobs):
+def format_jobs(jobs, now=None):
     """Return formatted job table lines and corresponding job objects."""
+
+    if now is None:
+        now = time.time()
 
     rows = []
     headers = [
@@ -97,6 +122,8 @@ def format_jobs(jobs):
     ]
 
     for job in jobs:
+        if job.get("queue") == "cpu_inter_exec":
+            continue
         queue = job.get("queue", "").replace("_batch_exec", "")
         job_id = job.get("id", "")
         name = job.get("name", "")
@@ -123,6 +150,7 @@ def format_jobs(jobs):
             cpu_util = cpupercent / ncpus_used
         cpu_util_str = f"{int(cpu_util)}%" if cpu_util else ""
         cpu_low = cpu_util and cpu_util < 10
+        short_run = used_s <= 120
 
         ram = int(job.get("mem_request_gb", 0))
         vmem_kb = job.get("vmem_used_kb") or job.get("mem_usage", 0)
@@ -147,6 +175,29 @@ def format_jobs(jobs):
             if job.get("exit_status", 0) != 0:
                 note = "!" + note
 
+        cpu_field = (
+            mqstat.Colors.RED + cpu_util_str + mqstat.Colors.ENDC
+            if cpu_low and not short_run
+            else cpu_util_str
+        )
+        ram_field = (
+            mqstat.Colors.RED + ram_util_str + mqstat.Colors.ENDC
+            if ram_low and not short_run
+            else ram_util_str
+        )
+
+        row_color = ""
+        if state not in ("C", "F"):
+            row_color = mqstat.Colors.GREEN
+        else:
+            end_time = job.get("obittime") or job.get("mtime")
+            if end_time and now - end_time < 600:
+                row_color = (
+                    mqstat.Colors.YELLOW
+                    if job.get("exit_status", 0) == 0
+                    else mqstat.Colors.RED
+                )
+
         rows.append(
             {
                 "job_id": job_id,
@@ -156,31 +207,32 @@ def format_jobs(jobs):
                 "wall": total,
                 "waited": waited,
                 "cpu": str(cpu),
-                "cpu_util": mqstat.Colors.RED + cpu_util_str + mqstat.Colors.ENDC if cpu_low else cpu_util_str,
+                "cpu_util": cpu_field,
                 "ram": str(ram),
-                "ram_util": mqstat.Colors.RED + ram_util_str + mqstat.Colors.ENDC if ram_low else ram_util_str,
+                "ram_util": ram_field,
                 "state": state,
                 "queue": queue,
                 "note": note,
                 "raw": job,
+                "row_color": row_color,
             }
         )
 
     if not rows:
         return ["  ".join(headers)], []
 
-    id_w = max(len(headers[0]), max(len(r["job_id"]) for r in rows))
-    name_w = max(len(headers[1]), max(len(r["name"]) for r in rows))
+    id_w = max(len(headers[0]), max(visible_len(r["job_id"]) for r in rows))
+    name_w = max(len(headers[1]), max(visible_len(r["name"]) for r in rows))
     time_w = len(headers[2])
-    wall_w = max(len(headers[4]), max(len(r["wall"]) for r in rows))
-    wait_w = max(len(headers[5]), max(len(r["waited"]) for r in rows))
-    cpu_w = max(len(headers[6]), max(len(r["cpu"]) for r in rows))
-    cpuu_w = max(len(headers[7]), max(len(r["cpu_util"]) for r in rows))
-    ram_w = max(len(headers[8]), max(len(r["ram"]) for r in rows))
-    ramu_w = max(len(headers[9]), max(len(r["ram_util"]) for r in rows))
-    state_w = max(len(headers[10]), max(len(r["state"]) for r in rows))
-    queue_w = max(len(headers[11]), max(len(r["queue"]) for r in rows))
-    note_w = max(len(headers[12]), max(len(r["note"]) for r in rows))
+    wall_w = max(len(headers[4]), max(visible_len(r["wall"]) for r in rows))
+    wait_w = max(len(headers[5]), max(visible_len(r["waited"]) for r in rows))
+    cpu_w = max(len(headers[6]), max(visible_len(r["cpu"]) for r in rows))
+    cpuu_w = max(len(headers[7]), max(visible_len(r["cpu_util"]) for r in rows))
+    ram_w = max(len(headers[8]), max(visible_len(r["ram"]) for r in rows))
+    ramu_w = max(len(headers[9]), max(visible_len(r["ram_util"]) for r in rows))
+    state_w = max(len(headers[10]), max(visible_len(r["state"]) for r in rows))
+    queue_w = max(len(headers[11]), max(visible_len(r["queue"]) for r in rows))
+    note_w = max(len(headers[12]), max(visible_len(r["note"]) for r in rows))
 
     header_parts = [
         headers[0].ljust(id_w),
@@ -201,30 +253,38 @@ def format_jobs(jobs):
 
     for r in rows:
         parts = [
-            r["job_id"].ljust(id_w),
-            r["name"].ljust(name_w),
-            r["used"].ljust(time_w),
+            ljust_ansi(r["job_id"], id_w),
+            ljust_ansi(r["name"], name_w),
+            ljust_ansi(r["used"], time_w),
             r["bar"],
-            r["wall"].ljust(wall_w),
-            r["waited"].ljust(wait_w),
-            r["cpu"].rjust(cpu_w),
-            r["cpu_util"].rjust(cpuu_w),
-            r["ram"].rjust(ram_w),
-            r["ram_util"].rjust(ramu_w),
-            r["state"].ljust(state_w),
-            r["queue"].ljust(queue_w),
-            r["note"].ljust(note_w),
+            ljust_ansi(r["wall"], wall_w),
+            ljust_ansi(r["waited"], wait_w),
+            rjust_ansi(r["cpu"], cpu_w),
+            rjust_ansi(r["cpu_util"], cpuu_w),
+            rjust_ansi(r["ram"], ram_w),
+            rjust_ansi(r["ram_util"], ramu_w),
+            ljust_ansi(r["state"], state_w),
+            ljust_ansi(r["queue"], queue_w),
+            ljust_ansi(r["note"], note_w),
         ]
-        lines.append("  ".join(parts))
+        coloured_parts = []
+        row_colour = r.get("row_color", "")
+        for idx, part in enumerate(parts):
+            if idx == 3:  # progress column
+                coloured_parts.append(part)
+            elif row_colour and not ansi_re.search(part):
+                coloured_parts.append(row_colour + part + mqstat.Colors.ENDC)
+            else:
+                coloured_parts.append(part)
+        lines.append("  ".join(coloured_parts))
 
     jobs_out = [r["raw"] for r in rows]
     return lines, jobs_out
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Continuously watch job list")
+    parser = argparse.ArgumentParser(description="Interactive job viewer")
     parser.add_argument("--qstat-file", help="Use qstat -f output from file", default=None)
-    parser.add_argument("--interval", type=float, default=2, help="Refresh interval in seconds")
     args = parser.parse_args()
 
     def get_jobs(include_history: bool = False):
@@ -241,6 +301,7 @@ def main() -> None:
         finished = {}
         selected = 1
         lines, job_rows = [], []
+        refresh = True
 
         while True:
             key = stdscr.getch()
@@ -265,31 +326,37 @@ def main() -> None:
                             subprocess.call(["less", stdout_path])
                             stdscr.clear()
                             curses.curs_set(0)
+            elif key == ord("r"):
+                refresh = True
 
-            jobs = get_jobs(include_history=True)
-            now = time.time()
-            running = []
-            for job in jobs:
-                if job.get("state") in ("C", "F"):
+            if refresh:
+                jobs = get_jobs(include_history=True)
+                now = time.time()
+                running = []
+                for job in jobs:
+                    if job.get("queue") == "cpu_inter_exec":
+                        continue
+                    if job.get("state") in ("C", "F"):
+                        ft = job.get("obittime") or job.get("mtime", now)
+                        if now - ft <= 24 * 3600:
+                            finished[job["id"]] = job
+                    else:
+                        running.append(job)
+                for jid, job in list(finished.items()):
                     ft = job.get("obittime") or job.get("mtime", now)
-                    if now - ft <= 24 * 3600:
-                        finished[job["id"]] = job
-                else:
-                    running.append(job)
-            for jid, job in list(finished.items()):
-                ft = job.get("obittime") or job.get("mtime", now)
-                if now - ft > 24 * 3600:
-                    finished.pop(jid, None)
+                    if now - ft > 24 * 3600 or job.get("queue") == "cpu_inter_exec":
+                        finished.pop(jid, None)
 
-            all_jobs = running + list(finished.values())
-            lines, job_rows = format_jobs(all_jobs)
+                all_jobs = running + list(finished.values())
+                lines, job_rows = format_jobs(all_jobs, now=now)
+                refresh = False
 
             maxy, maxx = stdscr.getmaxyx()
             stdscr.erase()
             for i, line in enumerate(lines[: maxy]):
                 draw_line(stdscr, i, line, maxx, highlight=(i == selected))
             stdscr.refresh()
-            time.sleep(args.interval)
+            time.sleep(0.1)
 
     curses.wrapper(_draw)
 

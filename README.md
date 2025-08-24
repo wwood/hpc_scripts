@@ -139,8 +139,8 @@ sternesp CPUs queued: 0
 Non-microbiome group jobs / CPU: 0 / 0 (0.0%)
 ```
 
-For an interactive, continuously updating view of job status, use `mqtop`.
-This command replaces the old `mqstat --watch` option.
+For an interactive view of job status, use `mqtop`. Press `r` to refresh the
+display. This command replaces the old `mqstat --watch` option.
 
 You can also view a detailed breakdown queued and running jobs on a per-user basis by typing `mqstat --list`. Example output:
 ```
