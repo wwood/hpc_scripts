@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""Interactive job viewer similar to ``htop``.
+
+This tool combines running and recently finished jobs into a single table
+and allows selecting rows to inspect job logs.
+"""
+
+import argparse
+import importlib.util
+import os
+import re
+import subprocess
+import time
+import unicodedata
+from importlib.machinery import SourceFileLoader
+
+import curses
+
+
+def _load_script(name):
+    """Load a script from ``bin`` as a module."""
+
+    path = os.path.join(os.path.dirname(__file__), name)
+    loader = SourceFileLoader(f"{name}_module", path)
+    spec = importlib.util.spec_from_loader(f"{name}_module", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+mqstat = _load_script("mqstat")
+mqsub = _load_script("mqsub")
+
+
+ansi_re = re.compile(r"\x1b\[(\d+)m(.*?)\x1b\[0m")
+
+
+def _width(ch):
+    if unicodedata.combining(ch):
+        return 0
+    return 2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+
+
+def addstr_safe(stdscr, y, x, text, maxx, attr=0):
+    width = 0
+    out = []
+    for ch in text:
+        w = _width(ch)
+        if x + width + w > maxx - 1:
+            break
+        out.append(ch)
+        width += w
+    if out:
+        try:
+            stdscr.addstr(y, x, "".join(out), attr)
+        except curses.error:
+            pass
+    return width
+
+
+def draw_line(stdscr, y, line, maxx, highlight=False):
+    """Draw a line that may contain ANSI colour escape codes."""
+
+    x = 0
+    last = 0
+    attr = curses.A_REVERSE if highlight else 0
+    for match in ansi_re.finditer(line):
+        x += addstr_safe(stdscr, y, x, line[last:match.start()], maxx, attr)
+        colour = match.group(1)
+        colour_pair = curses.color_pair(1 if colour == "92" else 2)
+        x += addstr_safe(stdscr, y, x, match.group(2), maxx, colour_pair | attr)
+        last = match.end()
+        if x >= maxx - 1:
+            break
+    if x < maxx - 1 and last < len(line):
+        addstr_safe(stdscr, y, x, line[last:], maxx, attr)
+
+
+def format_jobs(jobs):
+    """Return formatted job table lines and corresponding job objects."""
+
+    rows = []
+    headers = [
+        "job_id",
+        "name",
+        "time used",
+        "progress",
+        "walltime",
+        "waited",
+        "CPU",
+        "cpu%",
+        "RAM(G)",
+        "ram%",
+        "state",
+        "queue",
+        "note",
+    ]
+
+    for job in jobs:
+        queue = job.get("queue", "").replace("_batch_exec", "")
+        job_id = job.get("id", "")
+        name = job.get("name", "")
+        used_s = job.get("walltime_used", 0)
+        total_s = job.get("walltime_total", job.get("walltime", 0))
+        used = mqstat.format_hm(used_s)
+        total = mqstat.format_hm(total_s)
+        bar = mqstat.progress_bar(used_s, total_s)
+        waited = ""
+        qtime = job.get("qtime")
+        start_time = job.get("start_time")
+        if qtime and start_time and start_time > qtime:
+            waited = mqstat.format_hm(start_time - qtime)
+
+        cpu = job.get("ncpus", 0)
+        cpupercent = job.get("cpupercent")
+        ncpus_used = job.get("ncpus_used", cpu)
+        cpu_util = 0
+        if job.get("state") in ("C", "F"):
+            cput_used = job.get("cput_used", 0)
+            if used_s and cpu:
+                cpu_util = cput_used / (used_s * cpu) * 100
+        elif cpupercent is not None and ncpus_used:
+            cpu_util = cpupercent / ncpus_used
+        cpu_util_str = f"{int(cpu_util)}%" if cpu_util else ""
+        cpu_low = cpu_util and cpu_util < 10
+
+        ram = int(job.get("mem_request_gb", 0))
+        vmem_kb = job.get("vmem_used_kb") or job.get("mem_usage", 0)
+        ram_util = (vmem_kb / (ram * 1024 * 1024) * 100) if ram else 0
+        ram_util_str = f"{int(ram_util)}%" if ram_util else ""
+        ram_low = ram_util and ram_util < 10
+
+        state = job.get("state", "")
+        note = ""
+        if state not in ("C", "F"):
+            if cpupercent is not None and ncpus_used and cpupercent < ncpus_used * 10:
+                note = "❗ over-resourced? <10% of CPU used"
+        else:
+            if used_s < 60:
+                note = "short"
+            elif cpu_low and ram_low:
+                note = "<10% CPU, <10% RAM"
+            elif cpu_low:
+                note = "<10% CPU"
+            elif ram_low:
+                note = "<10% RAM"
+            if job.get("exit_status", 0) != 0:
+                note = "!" + note
+
+        rows.append(
+            {
+                "job_id": job_id,
+                "name": name,
+                "used": used,
+                "bar": bar,
+                "wall": total,
+                "waited": waited,
+                "cpu": str(cpu),
+                "cpu_util": mqstat.Colors.RED + cpu_util_str + mqstat.Colors.ENDC if cpu_low else cpu_util_str,
+                "ram": str(ram),
+                "ram_util": mqstat.Colors.RED + ram_util_str + mqstat.Colors.ENDC if ram_low else ram_util_str,
+                "state": state,
+                "queue": queue,
+                "note": note,
+                "raw": job,
+            }
+        )
+
+    if not rows:
+        return ["  ".join(headers)], []
+
+    id_w = max(len(headers[0]), max(len(r["job_id"]) for r in rows))
+    name_w = max(len(headers[1]), max(len(r["name"]) for r in rows))
+    time_w = len(headers[2])
+    wall_w = max(len(headers[4]), max(len(r["wall"]) for r in rows))
+    wait_w = max(len(headers[5]), max(len(r["waited"]) for r in rows))
+    cpu_w = max(len(headers[6]), max(len(r["cpu"]) for r in rows))
+    cpuu_w = max(len(headers[7]), max(len(r["cpu_util"]) for r in rows))
+    ram_w = max(len(headers[8]), max(len(r["ram"]) for r in rows))
+    ramu_w = max(len(headers[9]), max(len(r["ram_util"]) for r in rows))
+    state_w = max(len(headers[10]), max(len(r["state"]) for r in rows))
+    queue_w = max(len(headers[11]), max(len(r["queue"]) for r in rows))
+    note_w = max(len(headers[12]), max(len(r["note"]) for r in rows))
+
+    header_parts = [
+        headers[0].ljust(id_w),
+        headers[1].ljust(name_w),
+        headers[2].ljust(time_w),
+        headers[3].ljust(20),
+        headers[4].ljust(wall_w),
+        headers[5].ljust(wait_w),
+        headers[6].rjust(cpu_w),
+        headers[7].rjust(cpuu_w),
+        headers[8].rjust(ram_w),
+        headers[9].rjust(ramu_w),
+        headers[10].ljust(state_w),
+        headers[11].ljust(queue_w),
+        headers[12].ljust(note_w),
+    ]
+    lines = ["  ".join(header_parts)]
+
+    for r in rows:
+        parts = [
+            r["job_id"].ljust(id_w),
+            r["name"].ljust(name_w),
+            r["used"].ljust(time_w),
+            r["bar"],
+            r["wall"].ljust(wall_w),
+            r["waited"].ljust(wait_w),
+            r["cpu"].rjust(cpu_w),
+            r["cpu_util"].rjust(cpuu_w),
+            r["ram"].rjust(ram_w),
+            r["ram_util"].rjust(ramu_w),
+            r["state"].ljust(state_w),
+            r["queue"].ljust(queue_w),
+            r["note"].ljust(note_w),
+        ]
+        lines.append("  ".join(parts))
+
+    jobs_out = [r["raw"] for r in rows]
+    return lines, jobs_out
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Continuously watch job list")
+    parser.add_argument("--qstat-file", help="Use qstat -f output from file", default=None)
+    parser.add_argument("--interval", type=float, default=2, help="Refresh interval in seconds")
+    args = parser.parse_args()
+
+    def get_jobs(include_history: bool = False):
+        return mqstat.parse_qstat(path=args.qstat_file, include_history=include_history)
+
+    def _draw(stdscr):
+        curses.curs_set(0)
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_GREEN, -1)
+        curses.init_pair(2, curses.COLOR_RED, -1)
+        stdscr.nodelay(True)
+
+        finished = {}
+        selected = 1
+        lines, job_rows = [], []
+
+        while True:
+            key = stdscr.getch()
+            if key == ord("q"):
+                break
+            elif key in (curses.KEY_DOWN, ord("j")):
+                if lines:
+                    selected = min(selected + 1, len(lines) - 1)
+            elif key in (curses.KEY_UP, ord("k")):
+                if lines:
+                    selected = max(1, selected - 1)
+            elif key in (ord("l"), ord("o")):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    if job.get("state") in ("C", "F"):
+                        try:
+                            stdout_path, _ = mqsub.PbsJobInfo.stdout_and_stderr_paths(job["id"])
+                        except Exception:
+                            stdout_path = None
+                        if stdout_path and os.path.exists(stdout_path):
+                            curses.endwin()
+                            subprocess.call(["less", stdout_path])
+                            stdscr.clear()
+                            curses.curs_set(0)
+
+            jobs = get_jobs(include_history=True)
+            now = time.time()
+            running = []
+            for job in jobs:
+                if job.get("state") in ("C", "F"):
+                    ft = job.get("obittime") or job.get("mtime", now)
+                    if now - ft <= 24 * 3600:
+                        finished[job["id"]] = job
+                else:
+                    running.append(job)
+            for jid, job in list(finished.items()):
+                ft = job.get("obittime") or job.get("mtime", now)
+                if now - ft > 24 * 3600:
+                    finished.pop(jid, None)
+
+            all_jobs = running + list(finished.values())
+            lines, job_rows = format_jobs(all_jobs)
+
+            maxy, maxx = stdscr.getmaxyx()
+            stdscr.erase()
+            for i, line in enumerate(lines[: maxy]):
+                draw_line(stdscr, i, line, maxx, highlight=(i == selected))
+            stdscr.refresh()
+            time.sleep(args.interval)
+
+    curses.wrapper(_draw)
+
+
+if __name__ == "__main__":
+    main()
+
