@@ -1,6 +1,5 @@
 import runpy
 from pathlib import Path
-import runpy
 import re
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -77,4 +76,17 @@ def test_short_runtime_not_coloured_red():
     assert "\033[91m" not in lines[1]
     row = split_cols(lines[1])
     assert row[-1] == ""
+
+
+def test_refresh_due():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    mod = runpy.run_path(str(script))
+
+    assert not mod["refresh_due"](0, now=599)
+    assert mod["refresh_due"](0, now=600)
+
+    last = 600
+    assert not mod["refresh_due"](last, now=last + 599)
+    assert mod["refresh_due"](last, now=last + 600)
 

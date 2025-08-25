@@ -36,6 +36,27 @@ ansi_re = re.compile(r"\x1b\[(\d+)m(.*?)\x1b\[0m")
 # basic ANSI colour escapes used for row colouring
 ORANGE = "\033[33m"
 
+# Automatically refresh the job table every 10 minutes (in seconds)
+REFRESH_INTERVAL = 10 * 60
+
+
+def refresh_due(last_refresh: float, now: float | None = None, interval: int = REFRESH_INTERVAL) -> bool:
+    """Return ``True`` if a refresh should occur.
+
+    Parameters
+    ----------
+    last_refresh:
+        Timestamp of the most recent refresh.
+    now:
+        Current timestamp. Defaults to ``time.time()``.
+    interval:
+        Refresh interval in seconds. Defaults to :data:`REFRESH_INTERVAL`.
+    """
+
+    if now is None:
+        now = time.time()
+    return now - last_refresh >= interval
+
 
 def strip_ansi(text: str) -> str:
     """Return *text* with ANSI colour escapes removed."""
@@ -345,10 +366,14 @@ def main() -> None:
         lines, job_rows = [], []
         refresh = True
         show_queued = True
+        last_refresh = 0.0
 
         while True:
             maxy, maxx = stdscr.getmaxyx()
             key = stdscr.getch()
+            if refresh_due(last_refresh):
+                refresh = True
+
             if key == ord("q"):
                 break
             elif key == curses.KEY_MOUSE:
@@ -473,6 +498,7 @@ def main() -> None:
                 )
                 all_jobs = running + (queued if show_queued else []) + finished_jobs
                 lines, job_rows = format_jobs(all_jobs, now=now)
+                last_refresh = time.time()
                 refresh = False
 
             stdscr.erase()
