@@ -309,7 +309,7 @@ def main() -> None:
     parser.add_argument(
         "--max-jobs",
         type=int,
-        default=500,
+        default=1000,
         help="Maximum number of jobs to load",
     )
     args = parser.parse_args()
