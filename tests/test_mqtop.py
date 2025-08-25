@@ -90,3 +90,18 @@ def test_refresh_due():
     assert not mod["refresh_due"](last, now=last + 599)
     assert mod["refresh_due"](last, now=last + 600)
 
+
+def test_grafana_url():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    mod = runpy.run_path(str(script))
+
+    assert (
+        mod["grafana_url"]("12345.aqua")
+        == "https://hpc-monitoring.eres.qut.edu.au/d/pbs-public-job/pbs-job?var-jobid=12345"
+    )
+    assert (
+        mod["grafana_url"]("67890")
+        == "https://hpc-monitoring.eres.qut.edu.au/d/pbs-public-job/pbs-job?var-jobid=67890"
+    )
+

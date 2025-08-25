@@ -40,6 +40,20 @@ ORANGE = "\033[33m"
 REFRESH_INTERVAL = 10 * 60
 
 
+def grafana_url(job_id: str) -> str:
+    """Return Grafana dashboard URL for *job_id*.
+
+    ``job_id`` may include a suffix such as ``.aqua`` which will be
+    stripped before constructing the URL.
+    """
+
+    numeric = str(job_id).split(".")[0]
+    return (
+        "https://hpc-monitoring.eres.qut.edu.au/d/pbs-public-job/pbs-job?var-jobid="
+        + numeric
+    )
+
+
 def refresh_due(last_refresh: float, now: float | None = None, interval: int = REFRESH_INTERVAL) -> bool:
     """Return ``True`` if a refresh should occur.
 
@@ -445,6 +459,15 @@ def main() -> None:
                         subprocess.call(["/pkg/hpc/scripts/ssh-to-job", str(job["id"])])
                         stdscr.clear()
                         curses.curs_set(0)
+            elif key == ord("g"):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    url = grafana_url(job.get("id"))
+                    curses.endwin()
+                    print(url)
+                    input("Press Enter to return...")
+                    stdscr.clear()
+                    curses.curs_set(0)
             elif key == ord("/"):
                 curses.echo()
                 stdscr.nodelay(False)
@@ -526,7 +549,9 @@ def main() -> None:
             else:
                 offset = 0
                 selected = 1
-            help_text = "q quit  / search  o stdout  e stderr  f full  s ssh  r refresh  u toggle queued"
+            help_text = (
+                "q quit  / search  o stdout  e stderr  f full  s ssh  r refresh  u toggle queued  g grafana"
+            )
             addstr_safe(stdscr, maxy - 1, 0, help_text, maxx)
             stdscr.refresh()
             time.sleep(0.1)
