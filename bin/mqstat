@@ -626,7 +626,7 @@ def job_table(jobs, finished=False):
         note = ''
         cpupercent = job.get('cpupercent')
         ncpus_used = job.get('ncpus_used', job.get('ncpus', 0))
-        if cpupercent is not None and ncpus_used:
+        if cpupercent is not None and ncpus_used and used_s >= 120:
             if cpupercent < ncpus_used * 10:
                 note = '❗ <10% of CPU used'
 

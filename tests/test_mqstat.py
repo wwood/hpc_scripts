@@ -234,6 +234,28 @@ def test_job_table_zero_waited():
     assert row[5] == "00:00"
 
 
+def test_job_table_running_short_runtime_no_note():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import runpy
+    mod = runpy.run_path(str(script))
+    mod['parse_qstat'].limit_hit = False
+    job = {
+        'id': '1',
+        'name': 'short',
+        'walltime_used': 60,
+        'walltime_total': 120,
+        'ncpus': 4,
+        'cpupercent': 20,
+        'ncpus_used': 4,
+        'mem_request_gb': 1,
+        'state': 'R'
+    }
+    lines = mod['job_table']([job])
+    row = split_cols(lines[1])
+    assert row[-1] == ""
+
+
 def test_watch_jobs_no_curses_error(monkeypatch):
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqstat"

@@ -1,6 +1,15 @@
 import runpy
 from pathlib import Path
 import runpy
+import re
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def split_cols(line):
+    line = ANSI.sub('', line.rstrip('\n'))
+    parts = re.split(r"\s{2,}", line)
+    return [p.strip() for p in parts]
 
 
 def test_format_jobs_has_superset_columns():
@@ -66,4 +75,6 @@ def test_short_runtime_not_coloured_red():
 
     lines, _ = mod["format_jobs"](jobs)
     assert "\033[91m" not in lines[1]
+    row = split_cols(lines[1])
+    assert row[-1] == ""
 

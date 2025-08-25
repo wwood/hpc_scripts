@@ -173,7 +173,12 @@ def format_jobs(jobs, now=None):
 
         note = ""
         if state not in ("C", "F"):
-            if cpupercent is not None and ncpus_used and cpupercent < ncpus_used * 10:
+            if (
+                not short_run
+                and cpupercent is not None
+                and ncpus_used
+                and cpupercent < ncpus_used * 10
+            ):
                 note = "❗ <10% of CPU used"
         else:
             if used_s < 60:
