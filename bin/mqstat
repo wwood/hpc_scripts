@@ -16,6 +16,7 @@ import pwd
 import sys
 import grp
 import argparse
+import time
 from collections import defaultdict
 from datetime import datetime
 
@@ -604,6 +605,7 @@ def parse_qusers_output():
 def job_table(jobs, finished=False):
     """Return formatted job table lines."""
     rows = []
+    now = time.time()
     for job in jobs:
         queue = job.get('queue', '')
         if queue in ('cpu_inter_exec', 'gpu_inter_exec'):
@@ -631,10 +633,14 @@ def job_table(jobs, finished=False):
         waited = ''
         qtime = job.get('qtime')
         start_time = job.get('start_time')
-        if qtime and start_time and start_time > qtime:
-            waited = format_hm(start_time - qtime)
+        if qtime and start_time:
+            waited = format_hm(max(0, start_time - qtime))
 
         if finished:
+            age = ''
+            ft = job.get('obittime') or job.get('mtime')
+            if ft:
+                age = format_hm(max(0, int(now - ft)))
             cput_used = job.get('cput_used', 0)
             cpu_util = 0
             if used_s and cpu > 0:
@@ -666,6 +672,7 @@ def job_table(jobs, finished=False):
                 bar,
                 total,
                 waited,
+                age,
                 cpu,
                 cpu_icon,
                 cpu_util_str,
@@ -689,6 +696,7 @@ def job_table(jobs, finished=False):
             "progress",
             "walltime",
             "waited",
+            "age",
             "CPU",
             "util(%)",
             "RAM(G)",
@@ -709,12 +717,13 @@ def job_table(jobs, finished=False):
 
     if finished:
         wait_w = max(len(headers[5]), max(len(r[5]) for r in rows))
-        cpu_w = max(len(headers[6]), max(len(str(r[6])) for r in rows))
-        cpuu_w = max(len(headers[7]), max(len(r[8]) for r in rows))
-        ram_w = max(len(headers[8]), max(len(str(r[10])) for r in rows))
-        ramu_w = max(len(headers[9]), max(len(r[12]) for r in rows))
-        queue_w = max(len(headers[10]), max(len(r[14]) for r in rows))
-        note_w = max(len(headers[11]), max(len(r[15]) for r in rows))
+        age_w = max(len(headers[6]), max(len(r[6]) for r in rows))
+        cpu_w = max(len(headers[7]), max(len(str(r[7])) for r in rows))
+        cpuu_w = max(len(headers[8]), max(len(r[9]) for r in rows))
+        ram_w = max(len(headers[9]), max(len(str(r[11])) for r in rows))
+        ramu_w = max(len(headers[10]), max(len(r[13]) for r in rows))
+        queue_w = max(len(headers[11]), max(len(r[15]) for r in rows))
+        note_w = max(len(headers[12]), max(len(r[16]) for r in rows))
 
         def colour(val, low):
             return f"{Colors.RED}{val}{Colors.ENDC}" if low else val
@@ -726,12 +735,13 @@ def job_table(jobs, finished=False):
             headers[3].ljust(20),
             headers[4].ljust(wall_w),
             headers[5].ljust(wait_w),
-            headers[6].rjust(cpu_w) + ' ' * icon_w,
-            headers[7].rjust(cpuu_w),
-            headers[8].rjust(ram_w) + ' ' * icon_w,
-            headers[9].rjust(ramu_w),
-            headers[10].ljust(queue_w),
-            headers[11].ljust(note_w),
+            headers[6].ljust(age_w),
+            headers[7].rjust(cpu_w) + ' ' * icon_w,
+            headers[8].rjust(cpuu_w),
+            headers[9].rjust(ram_w) + ' ' * icon_w,
+            headers[10].rjust(ramu_w),
+            headers[11].ljust(queue_w),
+            headers[12].ljust(note_w),
         ]
         lines = ["  ".join(header_parts)]
         for r in rows:
@@ -742,16 +752,17 @@ def job_table(jobs, finished=False):
                 r[3],
                 r[4].ljust(wall_w),
                 r[5].ljust(wait_w),
-                str(r[6]).rjust(cpu_w) + r[7] + ' ' * (icon_w - (2 if r[7] else 0)),
-                colour(r[8].rjust(cpuu_w), r[9]),
-                str(r[10]).rjust(ram_w) + r[11] + ' ' * (icon_w - (2 if r[11] else 0)),
-                colour(r[12].rjust(ramu_w), r[13]),
-                r[14].ljust(queue_w),
-                r[15].ljust(note_w),
+                r[6].ljust(age_w),
+                str(r[7]).rjust(cpu_w) + r[8] + ' ' * (icon_w - (2 if r[8] else 0)),
+                colour(r[9].rjust(cpuu_w), r[10]),
+                str(r[11]).rjust(ram_w) + r[12] + ' ' * (icon_w - (2 if r[12] else 0)),
+                colour(r[13].rjust(ramu_w), r[14]),
+                r[15].ljust(queue_w),
+                r[16].ljust(note_w),
             ]
             lines.append("  ".join(parts))
         if parse_qstat.limit_hit:
-            warning = f"{Colors.BOLD}{Colors.RED}WARNING: job list truncated; running/queued jobs may be missing{Colors.ENDC}"
+            warning = f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more running/queued jobs{Colors.ENDC}"
             lines.insert(0, warning)
         return lines
     else:
@@ -789,7 +800,7 @@ def job_table(jobs, finished=False):
             ]
             lines.append("  ".join(parts))
         if parse_qstat.limit_hit:
-            warning = f"{Colors.BOLD}{Colors.RED}WARNING: job list truncated; running/queued jobs may be missing{Colors.ENDC}"
+            warning = f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more running/queued jobs{Colors.ENDC}"
             lines.insert(0, warning)
         return lines
 

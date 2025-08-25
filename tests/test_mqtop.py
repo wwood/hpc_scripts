@@ -1,5 +1,6 @@
 import runpy
 from pathlib import Path
+import runpy
 
 
 def test_format_jobs_has_superset_columns():
@@ -37,7 +38,7 @@ def test_format_jobs_has_superset_columns():
 
     lines, rows = mod["format_jobs"](jobs)
     header = lines[0]
-    for col in ["waited", "cpu%", "ram%", "state"]:
+    for col in ["waited", "age", "cpu%", "ram%", "state"]:
         assert col in header
     assert len(rows) == 2
 

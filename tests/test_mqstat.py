@@ -163,6 +163,7 @@ def test_job_table_finished_util_and_note():
         "progress",
         "walltime",
         "waited",
+        "age",
         "CPU",
         "util(%)",
         "RAM(G)",
@@ -174,12 +175,13 @@ def test_job_table_finished_util_and_note():
     assert row[0] == "333.server"
     assert row[1] == "finished"
     assert row[5] == "00:05"
-    assert row[6].rstrip('💪') == "4"
-    assert row[7] == "5%"
-    assert row[8].rstrip('🧠') == "4"
-    assert row[9] == "2%"
-    assert row[10] == "batch"
-    assert row[11].startswith("!<10% CPU, <10% RAM")
+    assert row[6] != ""
+    assert row[7].rstrip('💪') == "4"
+    assert row[8] == "5%"
+    assert row[9].rstrip('🧠') == "4"
+    assert row[10] == "2%"
+    assert row[11] == "batch"
+    assert row[12].startswith("!<10% CPU, <10% RAM")
     assert lines[1].count("\x1b[91m") == 2
 
     raw_header = ANSI.sub('', lines[0])
@@ -200,8 +202,36 @@ def test_job_table_warning_when_limited():
     mod['parse_qstat'].limit_hit = True
     job = {'id': '1', 'name': 'a', 'ncpus': 1, 'mem_request_gb': 1, 'state': 'R'}
     lines = mod['job_table']([job])
-    assert lines[0].startswith("\x1b[1m\x1b[91mWARNING")
+    assert lines[0].startswith("\x1b[91mWARNING: job list truncated")
+    assert "increase --max-jobs" in lines[0]
     mod['parse_qstat'].limit_hit = False
+
+
+def test_job_table_zero_waited():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import runpy, time as _time
+    mod = runpy.run_path(str(script))
+    now = int(_time.time())
+    mod['parse_qstat'].limit_hit = False
+    job = {
+        'id': '1',
+        'name': 'immediate',
+        'walltime_used': 10,
+        'walltime_total': 20,
+        'qtime': now,
+        'start_time': now,
+        'obittime': now,
+        'ncpus': 1,
+        'mem_request_gb': 1,
+        'cput_used': 10,
+        'vmem_used_kb': 1024,
+        'exit_status': 0,
+        'state': 'C'
+    }
+    lines = mod['job_table']([job], finished=True)
+    row = split_cols(lines[1])
+    assert row[5] == "00:00"
 
 
 def test_watch_jobs_no_curses_error(monkeypatch):
