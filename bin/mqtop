@@ -381,10 +381,14 @@ def main() -> None:
         refresh = True
         show_queued = True
         last_refresh = 0.0
+        user_warning = None
+        user_warn_until = 0.0
 
         while True:
             maxy, maxx = stdscr.getmaxyx()
             key = stdscr.getch()
+            if user_warning and time.time() > user_warn_until:
+                user_warning = None
             if refresh_due(last_refresh):
                 refresh = True
 
@@ -459,6 +463,12 @@ def main() -> None:
                         subprocess.call(["/pkg/hpc/scripts/ssh-to-job", str(job["id"])])
                         stdscr.clear()
                         curses.curs_set(0)
+                    else:
+                        user_warning = "Job is not running"
+                        user_warn_until = time.time() + 2
+                else:
+                    user_warning = "No job selected"
+                    user_warn_until = time.time() + 2
             elif key == ord("g"):
                 if 0 < selected <= len(job_rows):
                     job = job_rows[selected - 1]
@@ -491,6 +501,12 @@ def main() -> None:
             elif key == ord("u"):
                 show_queued = not show_queued
                 refresh = True
+            elif key not in (-1, curses.KEY_MOUSE, curses.KEY_RESIZE):
+                if 32 <= key <= 126:
+                    user_warning = f"Unknown key '{chr(key)}'"
+                else:
+                    user_warning = "Unknown key"
+                user_warn_until = time.time() + 2
 
             if refresh:
                 jobs = get_jobs(include_history=True)
@@ -528,7 +544,7 @@ def main() -> None:
             warning = None
             if mqstat.parse_qstat.limit_hit:
                 warning = "\x1b[91mWARNING: job list truncated; increase --max-jobs to see more running/queued jobs\x1b[0m"
-            page = maxy - 2
+            page = maxy - 3
             if lines:
                 max_sel = len(lines) - 1
                 selected = min(max(1, selected), max_sel)
@@ -549,10 +565,12 @@ def main() -> None:
             else:
                 offset = 0
                 selected = 1
+            if user_warning:
+                addstr_safe(stdscr, maxy - 2, 0, user_warning, maxx, curses.color_pair(2))
             help_text = (
                 "q quit  / search  o stdout  e stderr  f full  s ssh  r refresh  u toggle queued  g grafana"
             )
-            addstr_safe(stdscr, maxy - 1, 0, help_text, maxx)
+            addstr_safe(stdscr, maxy - 1, 0, help_text, maxx, curses.A_REVERSE)
             stdscr.refresh()
             time.sleep(0.1)
 
