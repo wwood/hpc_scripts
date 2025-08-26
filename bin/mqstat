@@ -284,9 +284,7 @@ def parse_qstat(path=None, include_history=False, max_jobs=None):
         cmd_active = (
             f"{cmd_active} | awk '/Job Id:/{{if (count++=={max_jobs}) {{print \"{limit_marker}\"; exit}}}} {{print}}'"
         )
-    active_out = run_command(cmd_active)
-    if not active_out:
-        return []
+    active_out = run_command(cmd_active) or ""
     lines = active_out.splitlines()
     if lines and lines[-1] == limit_marker:
         parse_qstat.limit_hit = True
