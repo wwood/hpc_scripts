@@ -123,7 +123,7 @@ def test_parse_qstat_max_jobs():
     mod['parse_qstat'](max_jobs=10, include_history=True)
     assert captured == [
         "qstat -f -t | awk '/Job Id:/{if (count++==10) {print \"AWK_LIMIT_REACHED\"; exit}} {print}'",
-        "qstat -xf -t | awk '/Job Id:/{if (count++==10) exit} {print}'",
+        "qstat -xf -t | awk '/Job Id:/{if (count++==10) {print \"AWK_LIMIT_REACHED\"; exit}} {print}'",
     ]
 
 
@@ -144,6 +144,48 @@ def test_parse_qstat_merges_active_and_history():
     ids = sorted(j['id'] for j in jobs)
     assert ids == ['1.server', '2.server', '3.server']
     assert mod['parse_qstat'].limit_hit is True
+
+
+def test_parse_qstat_history_limit_hit():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import runpy
+    mod = runpy.run_path(str(script))
+
+    def fake_run_command(cmd):
+        if "qstat -f -t" in cmd:
+            return "Job Id: 0.server\n"
+        return "Job Id: 1.server\nAWK_LIMIT_REACHED\n"
+
+    mod['parse_qstat'].__globals__['run_command'] = fake_run_command
+    jobs = mod['parse_qstat'](max_jobs=1, include_history=True)
+    assert len(jobs) == 2
+    assert mod['parse_qstat'].limit_hit is False
+    assert mod['parse_qstat'].history_limit_hit is True
+
+
+def test_job_table_history_warning_when_limited():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import runpy
+    mod = runpy.run_path(str(script))
+    mod['parse_qstat'].history_limit_hit = True
+    job = {
+        'id': '1',
+        'name': 'a',
+        'walltime_used': 10,
+        'walltime_total': 20,
+        'ncpus': 1,
+        'mem_request_gb': 1,
+        'state': 'C',
+        'queue': 'cpu',
+        'cput_used': 10,
+        'vmem_used_kb': 1024,
+    }
+    lines = mod['job_table']([job], finished=True)
+    assert lines[0].startswith("\x1b[91mWARNING: job list truncated")
+    assert "finished jobs" in lines[0]
+    mod['parse_qstat'].history_limit_hit = False
 
 
 def test_job_table_finished_util_and_note():
