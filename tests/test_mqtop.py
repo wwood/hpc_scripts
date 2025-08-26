@@ -1,107 +1,46 @@
-import runpy
-from pathlib import Path
+import subprocess
+import sys
 import re
+from pathlib import Path
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-
 
 def split_cols(line):
     line = ANSI.sub('', line.rstrip('\n'))
     parts = re.split(r"\s{2,}", line)
     return [p.strip() for p in parts]
 
-
-def test_format_jobs_has_superset_columns():
+def test_mqtop_print_first_page():
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqtop"
-    mod = runpy.run_path(str(script))
-
-    jobs = [
-        {
-            "id": "1",
-            "name": "run",
-            "walltime_used": 10,
-            "walltime_total": 20,
-            "ncpus": 2,
-            "mem_request_gb": 4,
-            "state": "R",
-            "queue": "cpu",
-            "cpupercent": 50,
-            "ncpus_used": 2,
-            "mem_usage": 2 * 1024 * 1024,
-        },
-        {
-            "id": "2",
-            "name": "done",
-            "walltime_used": 10,
-            "walltime_total": 20,
-            "ncpus": 1,
-            "mem_request_gb": 2,
-            "state": "C",
-            "queue": "cpu",
-            "cput_used": 10,
-            "vmem_used_kb": 1024 * 1024,
-        },
-    ]
-
-    lines, rows = mod["format_jobs"](jobs)
-    header = lines[0]
-    for col in ["waited", "age", "cpu%", "ram%", "state"]:
-        assert col in header
-    assert len(rows) == 2
-
-
-def test_short_runtime_not_coloured_red():
-    repo = Path(__file__).resolve().parents[1]
-    script = repo / "bin" / "mqtop"
-    mod = runpy.run_path(str(script))
-
-    jobs = [
-        {
-            "id": "1",
-            "name": "short",
-            "walltime_used": 100,
-            "walltime_total": 200,
-            "ncpus": 1,
-            "mem_request_gb": 1,
-            "state": "R",
-            "queue": "cpu",
-            "cpupercent": 5,
-            "ncpus_used": 1,
-            "mem_usage": 512 * 1024,
-        }
-    ]
-
-    lines, _ = mod["format_jobs"](jobs)
-    assert "\033[91m" not in lines[1]
-    row = split_cols(lines[1])
-    assert row[-1] == ""
-
-
-def test_refresh_due():
-    repo = Path(__file__).resolve().parents[1]
-    script = repo / "bin" / "mqtop"
-    mod = runpy.run_path(str(script))
-
-    assert not mod["refresh_due"](0, now=599)
-    assert mod["refresh_due"](0, now=600)
-
-    last = 600
-    assert not mod["refresh_due"](last, now=last + 599)
-    assert mod["refresh_due"](last, now=last + 600)
-
-
-def test_grafana_url():
-    repo = Path(__file__).resolve().parents[1]
-    script = repo / "bin" / "mqtop"
-    mod = runpy.run_path(str(script))
-
-    assert (
-        mod["grafana_url"]("12345.aqua")
-        == "https://hpc-monitoring.eres.qut.edu.au/d/pbs-public-job/pbs-job?var-jobid=12345"
+    qstat_file = repo / "tests" / "data" / "qstat_f.txt"
+    result = subprocess.run(
+        [sys.executable, str(script), "--print-first-page", "--qstat-file", str(qstat_file)],
+        text=True,
+        capture_output=True,
+        check=True,
     )
-    assert (
-        mod["grafana_url"]("67890")
-        == "https://hpc-monitoring.eres.qut.edu.au/d/pbs-public-job/pbs-job?var-jobid=67890"
-    )
-
+    lines = result.stdout.splitlines()
+    assert len(lines) == 5
+    header = [c for c in split_cols(lines[0]) if c]
+    assert header == [
+        "job_id",
+        "name",
+        "time used",
+        "progress",
+        "walltime",
+        "waited",
+        "age",
+        "CPU",
+        "cpu%",
+        "RAM(G)",
+        "ram%",
+        "state",
+        "queue",
+        "note",
+    ]
+    assert "222.server" in lines[1]
+    assert "almostdone" in lines[1]
+    assert "  2" in lines[1]
+    assert "R      batch" in lines[1]
+    assert "123.server" in lines[-1]

@@ -1,0 +1,52 @@
+Job Id: 10592488.aqua
+    Job_Name = snakejobsemibin.23.sh
+    Job_Owner = woodcrob@aquarius01.ib0.hpc.qut.edu.au
+    resources_used.cpupercent = 2400
+    resources_used.cput = 415:39:01
+    resources_used.mem = 26482476kb
+    resources_used.ncpus = 24
+    resources_used.ngpus = 0
+    resources_used.vmem = 137190880kb
+    resources_used.walltime = 20:28:57
+    job_state = F
+    queue = cpu_batch_exec
+    server = aqua
+    Checkpoint = u
+    ctime = Fri Aug 22 20:30:34 2025
+    Error_Path = aquarius01.ib0.hpc.qut.edu.au:/home/woodcrob/qsub_logs/2025-08-22/snakejobsemibin.23.sh-109/
+    exec_host = cpu1n025/4*0
+    exec_vnode = (cpu1n025[0]:ncpus=11:mem=134217728kb+cpu1n025[1]:ncpus=13)
+    Hold_Types = n
+    Join_Path = n
+    Keep_Files = n
+    Mail_Points = a
+    Mail_Users = woodcrob@qut.edu.au
+    mtime = Sat Aug 23 17:33:03 2025
+    Output_Path = aquarius01.ib0.hpc.qut.edu.au:/home/woodcrob/qsub_logs/2025-08-22/snakejobsemibin.23.sh-109/
+    Priority = 0
+    qtime = Fri Aug 22 20:30:34 2025
+    Rerunable = True
+    Resource_List.cpu_id = any
+    Resource_List.mem = 128gb
+    Resource_List.ncpus = 24
+    Resource_List.nfpgas = 0
+    Resource_List.ngpus = 0
+    Resource_List.nodect = 1
+    Resource_List.place = pack
+    Resource_List.select = 1:cpu_id=any:mem=128gb:ncpus=24:nfpgas=0:ngpus=0
+    Resource_List.walltime = 24:00:00
+    stime = Fri Aug 22 21:04:04 2025
+    obittime = Sat Aug 23 17:33:03 2025
+    session_id = 56520
+    jobdir = /home/woodcrob
+    substate = 92
+    Variable_List = PBS_O_HOME=/home/woodcrob,PBS_O_LANG=en_US.UTF-8,PBS_O_LOGNAME=woodcrob,PBS_O_PATH=/mnt/hpccs01/home/woodcrob/git/binchicken/binchicken/.pixi/envs/aviary/bin:/mnt/hpccs01/home/woodcrob/git/binchicken/binchicken/.pixi/envs/default/bin:/home/woodcrob/.pixi/bin:/home/woodcrob/.cargo/bin:/home/woodcrob/bioinfo/textadept_10.8.x86_64:/home/woodcrob/bin:/home/woodcrob/git/bbbin:/home/woodcrob/git/bbbin/rust/target/release:/home/woodcrob/git/mfqe/target/release:/opt/clmgr/sbin:/opt/clmgr/bin:/opt/sgi/sbin:/opt/sgi/bin:/mnt/hpccs01/work/microbiome/sw/hpc_scripts/bin:/home/woodcrob/.cargo/bin:/home/woodcrob/.pixi/bin:/home/woodcrob/.cargo/bin:/home/woodcrob/bioinfo/textadept_10.8.x86_64:/home/woodcrob/bin:/home/woodcrob/git/bbbin:/home/woodcrob/git/bbbin/rust/target/release:/home/woodcrob/git/mfqe/target/release:/home/woodcrob/.local/bin:/home/woodcrob/bin:/opt/clmgr/sbin:/opt/clmgr/bin:/opt/sgi/sbin:/opt/sgi/bin:/mnt/weka/pkg/cmr/sw/conda/bin:/mnt/weka/pkg/cmr/sw/conda/condabin:/mnt/hpccs01/work/microbiome/sw/hpc_scripts/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/c3/bin:/opt/pbs/bin:/sbin:/bin:/pkg/hpc/scripts:/opt/pbs/bin:/sbin:/bin:/pkg/hpc/scripts,PBS_O_MAIL=/var/spool/mail/woodcrob,PBS_O_SHELL=/bin/bash,PBS_O_INTERACTIVE_AUTH_METHOD=resvport,PBS_O_HOST=aquarius01.ib0.hpc.qut.edu.au,PBS_O_WORKDIR=/mnt/weka/scratch/microbiome/woodcrob/worm_binchicken/coassemble/coassemble/coassembly_18/recover,PBS_O_SYSTEM=Linux,PBS_O_QUEUE=cpu_batch,RAMDIR=/dev/shm/10592488.aqua
+    comment = Job run at Fri Aug 22 at 21:04 on (cpu1n025[0]:ncpus=11:mem=134217728kb+cpu1n025[1]:ncpus=13) and finished
+    etime = Fri Aug 22 20:30:34 2025
+    run_count = 1
+    Stageout_status = 1
+    Exit_status = 0
+    Submit_arguments = /tmp/mqsub_scriptibkm71mu.sh
+    history_timestamp = 1755934383
+    project = _pbs_project_default
+    Submit_Host = aquarius01.ib0.hpc.qut.edu.au

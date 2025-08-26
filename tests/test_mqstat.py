@@ -149,17 +149,20 @@ def test_parse_qstat_merges_active_and_history():
 def test_parse_qstat_history_only_when_no_active_jobs():
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqstat"
+    hist_file = repo / "tests" / "data" / "qstat_xf_finished.txt"
     import runpy
     mod = runpy.run_path(str(script))
+
+    hist_data = hist_file.read_text()
 
     def fake_run_command(cmd):
         if "qstat -f -t" in cmd:
             return ""
-        return "Job Id: 5.server\n    job_state = F\n"
+        return hist_data
 
     mod['parse_qstat'].__globals__['run_command'] = fake_run_command
     jobs = mod['parse_qstat'](include_history=True)
-    assert [j['id'] for j in jobs] == ['5.server']
+    assert [j['id'] for j in jobs] == ['10592488.aqua']
     assert jobs[0]['state'] == 'F'
 
 

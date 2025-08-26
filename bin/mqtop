@@ -347,6 +347,11 @@ def main() -> None:
         default=1000,
         help="Maximum number of jobs to load",
     )
+    parser.add_argument(
+        "--print-first-page",
+        action="store_true",
+        help="Print first page of job table to stdout and exit",
+    )
     args = parser.parse_args()
 
     def get_jobs(include_history: bool = False):
@@ -355,6 +360,35 @@ def main() -> None:
             include_history=include_history,
             max_jobs=args.max_jobs,
         )
+
+    if args.print_first_page:
+        jobs = get_jobs(include_history=True)
+        now = time.time()
+        finished = {}
+        running = []
+        queued = []
+        for job in jobs:
+            if job.get("queue") == "cpu_inter_exec":
+                continue
+            state = job.get("state")
+            if state in ("C", "F"):
+                ft = job.get("obittime") or job.get("mtime", now)
+                if now - ft <= 24 * 3600:
+                    finished[job["id"]] = job
+            elif state == "Q":
+                queued.append(job)
+            else:
+                running.append(job)
+        running.sort(key=lambda j: j.get("walltime_used", 0), reverse=True)
+        queued.sort(key=lambda j: now - j.get("qtime", now), reverse=True)
+        finished_jobs = sorted(
+            finished.values(), key=lambda j: j.get("obittime") or j.get("mtime", 0), reverse=True
+        )
+        all_jobs = running + queued + finished_jobs
+        lines, _ = format_jobs(all_jobs, now=now)
+        for line in lines[:24]:
+            print(line)
+        return
 
     def _draw(stdscr):
         curses.curs_set(0)
