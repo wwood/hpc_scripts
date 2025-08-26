@@ -340,7 +340,9 @@ def format_jobs(jobs, now=None):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Interactive job viewer")
-    parser.add_argument("--qstat-file", help="Use qstat -f output from file", default=None)
+    parser.add_argument("--qstat-f-file", help="Use qstat -f output from file", default=None)
+    parser.add_argument("--qstat-xf-file", help="Use qstat -xf output from file", default=None)
+    parser.add_argument("--qstat-file", help=argparse.SUPPRESS, default=None)
     parser.add_argument(
         "--max-jobs",
         type=int,
@@ -354,9 +356,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if args.qstat_file and not args.qstat_f_file:
+        args.qstat_f_file = args.qstat_file
+
     def get_jobs(include_history: bool = False):
+        if args.qstat_f_file or args.qstat_xf_file:
+            active = mqstat.parse_qstat(path=args.qstat_f_file) if args.qstat_f_file else []
+            hist = mqstat.parse_qstat(path=args.qstat_xf_file) if args.qstat_xf_file else []
+            job_dict = {j["id"]: j for j in active}
+            for job in hist:
+                job_dict.setdefault(job["id"], job)
+            return list(job_dict.values())
         return mqstat.parse_qstat(
-            path=args.qstat_file,
             include_history=include_history,
             max_jobs=args.max_jobs,
         )
@@ -372,13 +383,16 @@ def main() -> None:
                 continue
             state = job.get("state")
             if state in ("C", "F"):
-                ft = job.get("obittime") or job.get("mtime", now)
-                if now - ft <= 24 * 3600:
-                    finished[job["id"]] = job
+                finished[job["id"]] = job
             elif state == "Q":
                 queued.append(job)
             else:
                 running.append(job)
+        if running or queued:
+            for jid, job in list(finished.items()):
+                ft = job.get("obittime") or job.get("mtime", now)
+                if now - ft > 24 * 3600:
+                    finished.pop(jid, None)
         running.sort(key=lambda j: j.get("walltime_used", 0), reverse=True)
         queued.sort(key=lambda j: now - j.get("qtime", now), reverse=True)
         finished_jobs = sorted(
@@ -552,16 +566,18 @@ def main() -> None:
                         continue
                     state = job.get("state")
                     if state in ("C", "F"):
-                        ft = job.get("obittime") or job.get("mtime", now)
-                        if now - ft <= 24 * 3600:
-                            finished[job["id"]] = job
+                        finished[job["id"]] = job
                     elif state == "Q":
                         queued.append(job)
                     else:
                         running.append(job)
+                if running or queued:
+                    for jid, job in list(finished.items()):
+                        ft = job.get("obittime") or job.get("mtime", now)
+                        if now - ft > 24 * 3600:
+                            finished.pop(jid, None)
                 for jid, job in list(finished.items()):
-                    ft = job.get("obittime") or job.get("mtime", now)
-                    if now - ft > 24 * 3600 or job.get("queue") == "cpu_inter_exec":
+                    if job.get("queue") == "cpu_inter_exec":
                         finished.pop(jid, None)
 
                 running.sort(key=lambda j: j.get("walltime_used", 0), reverse=True)
