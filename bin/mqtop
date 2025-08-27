@@ -420,7 +420,11 @@ def main() -> None:
             curses.init_pair(4, curses.COLOR_YELLOW, -1)
         stdscr.nodelay(True)
         stdscr.keypad(True)
-        curses.mousemask(curses.BUTTON1_CLICKED)
+        curses.mousemask(
+            curses.BUTTON1_CLICKED
+            | curses.BUTTON4_PRESSED
+            | curses.BUTTON5_PRESSED
+        )
 
         finished = {}
         selected = 1  # absolute selected row index (1..)
@@ -444,12 +448,19 @@ def main() -> None:
                 break
             elif key == curses.KEY_MOUSE:
                 try:
-                    _, _, my, _, _ = curses.getmouse()
+                    _, _, my, _, bstate = curses.getmouse()
                 except curses.error:
                     pass
                 else:
-                    if 1 <= my < min(len(lines), maxy - 1):
-                        selected = min(offset + my, len(lines) - 1)
+                    if bstate & curses.BUTTON1_CLICKED:
+                        if 1 <= my < min(len(lines), maxy - 1):
+                            selected = min(offset + my, len(lines) - 1)
+                    elif bstate & curses.BUTTON4_PRESSED:
+                        if lines:
+                            selected = max(1, selected - 1)
+                    elif bstate & curses.BUTTON5_PRESSED:
+                        if lines:
+                            selected = min(selected + 1, len(lines) - 1)
             elif key in (curses.KEY_DOWN, ord("j")):
                 if lines:
                     selected = min(selected + 1, len(lines) - 1)
@@ -464,6 +475,9 @@ def main() -> None:
                 if lines:
                     page = maxy - 2
                     selected = max(1, selected - page)
+            elif key == curses.KEY_HOME:
+                selected = 1
+                offset = 0
             elif key in (ord("l"), ord("o"), ord("e")):
                 if 0 < selected <= len(job_rows):
                     job = job_rows[selected - 1]
