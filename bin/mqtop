@@ -606,8 +606,17 @@ def main() -> None:
 
             stdscr.erase()
             warning = None
-            if mqstat.parse_qstat.limit_hit:
-                warning = "\x1b[91mWARNING: job list truncated; increase --max-jobs to see more running/queued jobs\x1b[0m"
+            if mqstat.parse_qstat.limit_hit or getattr(mqstat.parse_qstat, "hist_limit_hit", False):
+                parts = []
+                if mqstat.parse_qstat.limit_hit:
+                    parts.append("running/queued jobs")
+                if getattr(mqstat.parse_qstat, "hist_limit_hit", False):
+                    parts.append("finished jobs")
+                warning = (
+                    "\x1b[91mWARNING: job list truncated; increase --max-jobs to see more "
+                    + " and ".join(parts)
+                    + "\x1b[0m"
+                )
             page = maxy - 3
             if lines:
                 max_sel = len(lines) - 1

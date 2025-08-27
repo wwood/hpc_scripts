@@ -123,7 +123,7 @@ def test_parse_qstat_max_jobs():
     mod['parse_qstat'](max_jobs=10, include_history=True)
     assert captured == [
         "qstat -f -t | awk '/Job Id:/{if (count++==10) {print \"AWK_LIMIT_REACHED\"; exit}} {print}'",
-        "qstat -xf -t | awk '/Job Id:/{if (count++==10) exit} {print}'",
+        "qstat -xf -t | awk '/Job Id:/{if (count++==10) {print \"AWK_LIMIT_REACHED\"; exit}} {print}'",
     ]
 
 
@@ -144,6 +144,23 @@ def test_parse_qstat_merges_active_and_history():
     ids = sorted(j['id'] for j in jobs)
     assert ids == ['1.server', '2.server', '3.server']
     assert mod['parse_qstat'].limit_hit is True
+
+
+def test_parse_qstat_history_limit_hit():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import os, runpy
+    os.environ.pop("MQSTAT_QSTAT_F", None)
+    mod = runpy.run_path(str(script))
+
+    def fake_run_command(cmd):
+        if "qstat -xf -t" in cmd:
+            return "Job Id: 1.server\nAWK_LIMIT_REACHED\n"
+        return ""
+
+    mod['parse_qstat'].__globals__['run_command'] = fake_run_command
+    mod['parse_qstat'](max_jobs=10, include_history=True)
+    assert mod['parse_qstat'].hist_limit_hit is True
 
 
 def test_parse_qstat_history_only_when_no_active_jobs():
@@ -219,12 +236,20 @@ def test_job_table_warning_when_limited():
     script = repo / "bin" / "mqstat"
     import runpy
     mod = runpy.run_path(str(script))
-    mod['parse_qstat'].limit_hit = True
     job = {'id': '1', 'name': 'a', 'ncpus': 1, 'mem_request_gb': 1, 'state': 'R'}
+    mod['parse_qstat'].limit_hit = True
     lines = mod['job_table']([job])
     assert lines[0].startswith("\x1b[91mWARNING: job list truncated")
-    assert "increase --max-jobs" in lines[0]
+    assert "running/queued jobs" in lines[0]
     mod['parse_qstat'].limit_hit = False
+    mod['parse_qstat'].hist_limit_hit = True
+    lines = mod['job_table']([job])
+    assert "finished jobs" in lines[0]
+    mod['parse_qstat'].limit_hit = True
+    lines = mod['job_table']([job])
+    assert "running/queued jobs and finished jobs" in lines[0]
+    mod['parse_qstat'].limit_hit = False
+    mod['parse_qstat'].hist_limit_hit = False
 
 
 def test_job_table_zero_waited():

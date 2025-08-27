@@ -116,6 +116,7 @@ def parse_qstat(path=None, include_history=False, max_jobs=None):
     """Parse qstat output and merge active and historical jobs."""
 
     parse_qstat.limit_hit = False
+    parse_qstat.hist_limit_hit = False
 
     def _parse(output):
         jobs = []
@@ -296,10 +297,14 @@ def parse_qstat(path=None, include_history=False, max_jobs=None):
         cmd_hist = "qstat -xf -t"
         if max_jobs:
             cmd_hist = (
-                f"{cmd_hist} | awk '/Job Id:/{{if (count++=={max_jobs}) exit}} {{print}}'"
+                f"{cmd_hist} | awk '/Job Id:/{{if (count++=={max_jobs}) {{print \"{limit_marker}\"; exit}}}} {{print}}'"
             )
         hist_out = run_command(cmd_hist) or ""
-        for job in _parse(hist_out):
+        lines = hist_out.splitlines()
+        if lines and lines[-1] == limit_marker:
+            parse_qstat.hist_limit_hit = True
+            lines = lines[:-1]
+        for job in _parse("\n".join(lines)):
             job_dict.setdefault(job['id'], job)
 
     return list(job_dict.values())
@@ -759,8 +764,17 @@ def job_table(jobs, finished=False):
                 r[16].ljust(note_w),
             ]
             lines.append("  ".join(parts))
+        messages = []
         if parse_qstat.limit_hit:
-            warning = f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more running/queued jobs{Colors.ENDC}"
+            messages.append("running/queued jobs")
+        if getattr(parse_qstat, "hist_limit_hit", False):
+            messages.append("finished jobs")
+        if messages:
+            warning = (
+                f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more "
+                + " and ".join(messages)
+                + f"{Colors.ENDC}"
+            )
             lines.insert(0, warning)
         return lines
     else:
@@ -797,8 +811,17 @@ def job_table(jobs, finished=False):
                 r[11].ljust(note_w),
             ]
             lines.append("  ".join(parts))
+        messages = []
         if parse_qstat.limit_hit:
-            warning = f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more running/queued jobs{Colors.ENDC}"
+            messages.append("running/queued jobs")
+        if getattr(parse_qstat, "hist_limit_hit", False):
+            messages.append("finished jobs")
+        if messages:
+            warning = (
+                f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more "
+                + " and ".join(messages)
+                + f"{Colors.ENDC}"
+            )
             lines.insert(0, warning)
         return lines
 
