@@ -645,7 +645,8 @@ def main() -> None:
             )
             addstr_safe(stdscr, maxy - 1, 0, help_text, maxx, curses.A_REVERSE)
             stdscr.refresh()
-            time.sleep(0.1)
+            if key == -1:
+                time.sleep(0.1)
 
     curses.wrapper(_draw)
 
