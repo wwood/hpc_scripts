@@ -239,15 +239,17 @@ def test_job_table_warning_when_limited():
     job = {'id': '1', 'name': 'a', 'ncpus': 1, 'mem_request_gb': 1, 'state': 'R'}
     mod['parse_qstat'].limit_hit = True
     lines = mod['job_table']([job])
-    assert lines[0].startswith("\x1b[91mWARNING: job list truncated")
-    assert "running/queued jobs" in lines[0]
+    assert lines[0].startswith("\x1b[91mWARNING: qstat -f")
+    assert "running/queued" in lines[0]
     mod['parse_qstat'].limit_hit = False
     mod['parse_qstat'].hist_limit_hit = True
     lines = mod['job_table']([job])
-    assert "finished jobs" in lines[0]
+    assert lines[0].startswith("\x1b[91mWARNING: qstat -xf")
+    assert "finished" in lines[0]
     mod['parse_qstat'].limit_hit = True
     lines = mod['job_table']([job])
-    assert "running/queued jobs and finished jobs" in lines[0]
+    assert lines[0].startswith("\x1b[91mWARNING: qstat -f")
+    assert lines[1].startswith("\x1b[91mWARNING: qstat -xf")
     mod['parse_qstat'].limit_hit = False
     mod['parse_qstat'].hist_limit_hit = False
 

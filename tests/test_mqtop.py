@@ -92,3 +92,37 @@ def test_mqtop_history_only_print_first_page():
     ]
     assert "10592488.aqua" in lines[1]
     assert lines.count(lines[0]) == 1
+
+
+def test_mqtop_print_first_page_warning(capsys):
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    import runpy, sys
+    mod = runpy.run_path(str(script))
+
+    def fake_parse_qstat(path=None, include_history=False, max_jobs=None):
+        mod['mqstat'].parse_qstat.limit_hit = True
+        mod['mqstat'].parse_qstat.hist_limit_hit = True
+        return [
+            {
+                "id": "1.server",
+                "name": "job",
+                "state": "R",
+                "queue": "batch",
+                "ncpus": 1,
+                "mem_request_gb": 1,
+                "walltime_used": 0,
+                "walltime_total": 0,
+            }
+        ]
+
+    mod['mqstat'].parse_qstat = fake_parse_qstat
+    orig_argv = sys.argv
+    sys.argv = ["mqtop", "--print-first-page"]
+    try:
+        mod['main']()
+    finally:
+        sys.argv = orig_argv
+    lines = [ANSI.sub("", l) for l in capsys.readouterr().out.splitlines() if l]
+    assert lines[0].startswith("WARNING: qstat -f")
+    assert lines[1].startswith("WARNING: qstat -xf")

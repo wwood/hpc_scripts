@@ -400,6 +400,13 @@ def main() -> None:
         )
         all_jobs = running + queued + finished_jobs
         lines, _ = format_jobs(all_jobs, now=now)
+        warnings = []
+        if mqstat.parse_qstat.limit_hit:
+            warnings.append("qstat -f may not have returned all running/queued jobs")
+        if getattr(mqstat.parse_qstat, "hist_limit_hit", False):
+            warnings.append("qstat -xf may not have returned all finished jobs")
+        for w in warnings:
+            print(f"\x1b[91mWARNING: {w}; increase --max-jobs\x1b[0m")
         for line in lines[:24]:
             print(line)
         return
@@ -606,16 +613,16 @@ def main() -> None:
 
             stdscr.erase()
             warning = None
-            if mqstat.parse_qstat.limit_hit or getattr(mqstat.parse_qstat, "hist_limit_hit", False):
-                parts = []
-                if mqstat.parse_qstat.limit_hit:
-                    parts.append("running/queued jobs")
-                if getattr(mqstat.parse_qstat, "hist_limit_hit", False):
-                    parts.append("finished jobs")
+            warning_parts = []
+            if mqstat.parse_qstat.limit_hit:
+                warning_parts.append("qstat -f missing running/queued jobs")
+            if getattr(mqstat.parse_qstat, "hist_limit_hit", False):
+                warning_parts.append("qstat -xf missing finished jobs")
+            if warning_parts:
                 warning = (
-                    "\x1b[91mWARNING: job list truncated; increase --max-jobs to see more "
-                    + " and ".join(parts)
-                    + "\x1b[0m"
+                    "\x1b[91mWARNING: "
+                    + " and ".join(warning_parts)
+                    + "; increase --max-jobs\x1b[0m"
                 )
             page = maxy - 3
             if lines:

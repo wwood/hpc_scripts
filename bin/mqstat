@@ -764,18 +764,18 @@ def job_table(jobs, finished=False):
                 r[16].ljust(note_w),
             ]
             lines.append("  ".join(parts))
-        messages = []
+        warnings = []
         if parse_qstat.limit_hit:
-            messages.append("running/queued jobs")
-        if getattr(parse_qstat, "hist_limit_hit", False):
-            messages.append("finished jobs")
-        if messages:
-            warning = (
-                f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more "
-                + " and ".join(messages)
-                + f"{Colors.ENDC}"
+            warnings.append(
+                f"{Colors.RED}WARNING: qstat -f may not have returned all running/queued jobs; "
+                f"increase --max-jobs{Colors.ENDC}"
             )
-            lines.insert(0, warning)
+        if getattr(parse_qstat, "hist_limit_hit", False):
+            warnings.append(
+                f"{Colors.RED}WARNING: qstat -xf may not have returned all finished jobs; "
+                f"increase --max-jobs{Colors.ENDC}"
+            )
+        lines = warnings + lines
         return lines
     else:
         cpu_w = max(len(headers[5]), max(len(str(r[5])) for r in rows))
@@ -811,19 +811,18 @@ def job_table(jobs, finished=False):
                 r[11].ljust(note_w),
             ]
             lines.append("  ".join(parts))
-        messages = []
+        warnings = []
         if parse_qstat.limit_hit:
-            messages.append("running/queued jobs")
-        if getattr(parse_qstat, "hist_limit_hit", False):
-            messages.append("finished jobs")
-        if messages:
-            warning = (
-                f"{Colors.RED}WARNING: job list truncated; increase --max-jobs to see more "
-                + " and ".join(messages)
-                + f"{Colors.ENDC}"
+            warnings.append(
+                f"{Colors.RED}WARNING: qstat -f may not have returned all running/queued jobs; "
+                f"increase --max-jobs{Colors.ENDC}"
             )
-            lines.insert(0, warning)
-        return lines
+        if getattr(parse_qstat, "hist_limit_hit", False):
+            warnings.append(
+                f"{Colors.RED}WARNING: qstat -xf may not have returned all finished jobs; "
+                f"increase --max-jobs{Colors.ENDC}"
+            )
+        return warnings + lines
 
 
 def list_jobs(jobs):
