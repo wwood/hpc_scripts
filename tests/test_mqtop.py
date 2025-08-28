@@ -90,7 +90,8 @@ def test_mqtop_history_only_print_first_page():
         "queue",
         "note",
     ]
-    assert "10592488.aqua" in lines[1]
+    assert "10592488" in lines[1]
+    assert "🐍semibin.23.sh" in lines[1]
     assert lines.count(lines[0]) == 1
 
 

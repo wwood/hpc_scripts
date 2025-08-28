@@ -12,6 +12,7 @@ import re
 import subprocess
 import time
 import unicodedata
+import textwrap
 from importlib.machinery import SourceFileLoader
 
 import curses
@@ -136,6 +137,77 @@ def draw_line(stdscr, y, line, maxx, highlight=False):
         addstr_safe(stdscr, y, x, line[last:], maxx, attr)
 
 
+HELP_TEXT = textwrap.dedent(
+    """
+    mqtop key bindings:
+      q           quit
+      h           show this help
+      /           search jobs by name or id
+      o or l      view stdout
+      e           view stderr
+      f           show full qstat info
+      s           ssh to running job
+      r           refresh
+      u           toggle queued jobs
+      g           open Grafana dashboard
+      arrow keys  move selection
+      j           move down
+      PgUp/PgDn   page
+      k           kill selected job (qdel)
+
+    Colours:
+      Row colours indicate job state:
+        - yellow: queued (state Q)
+        - green: finished successfully (exit status 0)
+        - red:   finished with error (non-zero exit status)
+        - orange: other non-running states (e.g. hold/suspended)
+
+      Field colours highlight low utilisation in running/finished jobs:
+        - red cpu%: <10% CPU utilisation (and job ran >2 minutes)
+        - red ram%: <10% RAM utilisation (and job ran >2 minutes)
+
+      Notes column:
+        - short: job ran for <60 seconds
+        - !prefix: job exited with non-zero status
+    """
+).splitlines()
+
+
+def show_help(stdscr):
+    stdscr.nodelay(False)
+    top = 0
+    while True:
+        maxy, maxx = stdscr.getmaxyx()
+        stdscr.erase()
+        for idx, line in enumerate(HELP_TEXT[top : top + maxy - 1]):
+            addstr_safe(stdscr, idx, 0, line, maxx)
+        addstr_safe(
+            stdscr,
+            maxy - 1,
+            0,
+            "q to exit help",
+            maxx,
+            curses.A_REVERSE,
+        )
+        stdscr.refresh()
+        key = stdscr.getch()
+        if key in (ord("q"), ord("h")):
+            break
+        elif key in (curses.KEY_DOWN, ord("j")):
+            if top < max(0, len(HELP_TEXT) - (maxy - 1)):
+                top += 1
+        elif key in (curses.KEY_UP,):
+            if top > 0:
+                top -= 1
+        elif key == curses.KEY_NPAGE:
+            top = min(len(HELP_TEXT) - (maxy - 1), top + (maxy - 1))
+        elif key == curses.KEY_PPAGE:
+            top = max(0, top - (maxy - 1))
+    stdscr.nodelay(True)
+    stdscr.clear()
+    curses.curs_set(0)
+
+
 def format_jobs(jobs, now=None):
     """Return formatted job table lines and corresponding job objects."""
 
@@ -164,8 +236,10 @@ def format_jobs(jobs, now=None):
         if job.get("queue") == "cpu_inter_exec":
             continue
         queue = job.get("queue", "").replace("_batch_exec", "")
-        job_id = job.get("id", "")
+        job_id = str(job.get("id", "")).replace(".aqua", "")
         name = job.get("name", "")
+        if name.startswith("snakejob"):
+            name = "🐍" + name[len("snakejob") :]
         used_s = job.get("walltime_used", 0)
         total_s = job.get("walltime_total", job.get("walltime", 0))
         used = mqstat.format_hm(used_s)
@@ -471,7 +545,7 @@ def main() -> None:
             elif key in (curses.KEY_DOWN, ord("j")):
                 if lines:
                     selected = min(selected + 1, len(lines) - 1)
-            elif key in (curses.KEY_UP, ord("k")):
+            elif key == curses.KEY_UP:
                 if lines:
                     selected = max(1, selected - 1)
             elif key == curses.KEY_NPAGE:
@@ -547,6 +621,19 @@ def main() -> None:
                     input("Press Enter to return...")
                     stdscr.clear()
                     curses.curs_set(0)
+            elif key == ord("k"):
+                if 0 < selected <= len(job_rows):
+                    job = job_rows[selected - 1]
+                    curses.endwin()
+                    subprocess.call(["qdel", str(job["id"])])
+                    stdscr.clear()
+                    curses.curs_set(0)
+                    user_warning = f"qdel {job['id']} sent"
+                    user_warn_until = time.time() + 2
+                    refresh = True
+                else:
+                    user_warning = "No job selected"
+                    user_warn_until = time.time() + 2
             elif key == ord("/"):
                 curses.echo()
                 stdscr.nodelay(False)
@@ -569,6 +656,9 @@ def main() -> None:
                 refresh = True
             elif key == ord("u"):
                 show_queued = not show_queued
+                refresh = True
+            elif key == ord("h"):
+                show_help(stdscr)
                 refresh = True
             elif key not in (-1, curses.KEY_MOUSE, curses.KEY_RESIZE):
                 if 32 <= key <= 126:
@@ -648,7 +738,7 @@ def main() -> None:
             if user_warning:
                 addstr_safe(stdscr, maxy - 2, 0, user_warning, maxx, curses.color_pair(2))
             help_text = (
-                "q quit  / search  o stdout  e stderr  f full  s ssh  r refresh  u toggle queued  g grafana"
+                "q quit  h help  / search  o stdout  e stderr  f full  s ssh  r refresh  u toggle queued  g grafana  k kill"
             )
             addstr_safe(stdscr, maxy - 1, 0, help_text, maxx, curses.A_REVERSE)
             stdscr.refresh()
@@ -660,4 +750,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
