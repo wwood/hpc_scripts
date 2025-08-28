@@ -143,7 +143,7 @@ HELP_TEXT = textwrap.dedent(
       q           quit
       h           show this help
       /           search jobs by name or id
-      o or l      view stdout
+      o           view stdout
       e           view stderr
       f           show full qstat info
       s           ssh to running job
@@ -151,7 +151,6 @@ HELP_TEXT = textwrap.dedent(
       u           toggle queued jobs
       g           open Grafana dashboard
       arrow keys  move selection
-      j           move down
       PgUp/PgDn   page
       k           kill selected job (qdel)
 
@@ -193,7 +192,7 @@ def show_help(stdscr):
         key = stdscr.getch()
         if key in (ord("q"), ord("h")):
             break
-        elif key in (curses.KEY_DOWN, ord("j")):
+        elif key in (curses.KEY_DOWN,):
             if top < max(0, len(HELP_TEXT) - (maxy - 1)):
                 top += 1
         elif key in (curses.KEY_UP,):
@@ -542,7 +541,7 @@ def main() -> None:
                     elif bstate & curses.BUTTON5_PRESSED:
                         if lines:
                             selected = min(selected + 1, len(lines) - 1)
-            elif key in (curses.KEY_DOWN, ord("j")):
+            elif key == curses.KEY_DOWN:
                 if lines:
                     selected = min(selected + 1, len(lines) - 1)
             elif key == curses.KEY_UP:
@@ -559,7 +558,7 @@ def main() -> None:
             elif key == curses.KEY_HOME:
                 selected = 1
                 offset = 0
-            elif key in (ord("l"), ord("o"), ord("e")):
+            elif key in (ord("o"), ord("e")):
                 if 0 < selected <= len(job_rows):
                     job = job_rows[selected - 1]
                     state = job.get("state")
