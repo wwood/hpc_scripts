@@ -303,6 +303,52 @@ def test_job_table_running_short_runtime_no_note():
     assert row[-1] == ""
 
 
+def test_job_table_alignment_wide_chars():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqstat"
+    import runpy, unicodedata
+    mod = runpy.run_path(str(script))
+    mod['parse_qstat'].limit_hit = False
+    mod['parse_qstat'].hist_limit_hit = False
+
+    def width(ch):
+        if unicodedata.combining(ch):
+            return 0
+        return 2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+
+    def display_index(line, text):
+        idx = line.index(text)
+        return sum(width(ch) for ch in line[:idx])
+
+    jobs = [
+        {
+            'id': '1',
+            'name': 'test',
+            'ncpus': 1,
+            'mem_request_gb': 1,
+            'state': 'R',
+            'queue': 'batch',
+            'walltime_used': 0,
+            'walltime_total': 0,
+        },
+        {
+            'id': '2',
+            'name': '🐍test',
+            'ncpus': 1,
+            'mem_request_gb': 1,
+            'state': 'R',
+            'queue': 'batch',
+            'walltime_used': 0,
+            'walltime_total': 0,
+        },
+    ]
+    lines = mod['job_table'](jobs)
+    header, row_plain, row_emoji = [ANSI.sub('', l) for l in lines[:3]]
+    q_idx = display_index(header, 'queue')
+    assert display_index(row_plain, 'batch') == q_idx
+    assert display_index(row_emoji, 'batch') == q_idx
+
+
 def test_watch_jobs_no_curses_error(monkeypatch):
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqstat"
