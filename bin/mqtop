@@ -80,9 +80,9 @@ def strip_ansi(text: str) -> str:
 
 
 def visible_len(text: str) -> int:
-    """Length of *text* ignoring ANSI colour escapes."""
+    """Display width of *text* ignoring ANSI colour escapes."""
 
-    return len(strip_ansi(text))
+    return sum(_width(ch) for ch in strip_ansi(text))
 
 
 def ljust_ansi(text: str, width: int) -> str:

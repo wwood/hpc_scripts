@@ -52,6 +52,50 @@ def test_mqtop_print_first_page():
     assert "123.server" in lines[-1]
 
 
+def test_mqtop_alignment_wide_chars():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    import runpy, unicodedata
+
+    def width(ch):
+        if unicodedata.combining(ch):
+            return 0
+        return 2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+
+    def display_index(line, text):
+        idx = line.index(text)
+        return sum(width(ch) for ch in line[:idx])
+
+    mod = runpy.run_path(str(script))
+    jobs = [
+        {
+            "id": "1.server",
+            "name": "test",
+            "queue": "batch",
+            "state": "R",
+            "ncpus": 1,
+            "mem_request_gb": 1,
+            "walltime_used": 0,
+            "walltime_total": 0,
+        },
+        {
+            "id": "2.server",
+            "name": "🐍test",
+            "queue": "batch",
+            "state": "R",
+            "ncpus": 1,
+            "mem_request_gb": 1,
+            "walltime_used": 0,
+            "walltime_total": 0,
+        },
+    ]
+    lines, _ = mod["format_jobs"](jobs)
+    header, row_plain, row_emoji = [ANSI.sub("", l) for l in lines[:3]]
+    q_idx = display_index(header, "queue")
+    assert display_index(row_plain, "batch") == q_idx
+    assert display_index(row_emoji, "batch") == q_idx
+
+
 def test_mqtop_history_only_print_first_page():
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqtop"
