@@ -92,7 +92,7 @@ def test_mqtop_alignment_wide_chars():
             "walltime_total": 0,
         },
     ]
-    lines, _ = mod["format_jobs"](jobs)
+    lines, _ = mod["format_jobs"](jobs, 200)
     header, row_plain, row_emoji = [ANSI.sub("", l) for l in lines[:3]]
     q_idx = display_index(header, "queue")
     assert display_index(row_plain, "batch") == q_idx
