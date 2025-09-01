@@ -1,0 +1,114 @@
+{
+  "timestamp": 0,
+  "pbs_version": "test",
+  "pbs_server": "server",
+  "Jobs": {
+    "123.server": {
+      "Job_Name": "testjob",
+      "queue": "batch",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "R",
+      "Resource_List": {
+        "ncpus": 4,
+        "mem": "4gb",
+        "walltime": "01:00:00"
+      },
+      "resources_used": {
+        "walltime": "00:10:00",
+        "cpupercent": 300,
+        "ncpus": 4
+      }
+    },
+    "456.server": {
+      "Job_Name": "bigmem",
+      "queue": "test_batch_exec",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "R",
+      "Resource_List": {
+        "ncpus": 8,
+        "mem": "256gb",
+        "walltime": "02:00:00"
+      },
+      "resources_used": {
+        "walltime": "00:30:00",
+        "cpupercent": 800,
+        "ncpus": 8
+      }
+    },
+    "789.server": {
+      "Job_Name": "bigcpu",
+      "queue": "batch",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "R",
+      "Resource_List": {
+        "ncpus": 64,
+        "mem": "64gb",
+        "walltime": "03:00:00"
+      },
+      "resources_used": {
+        "walltime": "00:20:00",
+        "cpupercent": 100,
+        "ncpus": 64
+      }
+    },
+    "222.server": {
+      "Job_Name": "almostdone",
+      "queue": "batch",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "R",
+      "Resource_List": {
+        "ncpus": 2,
+        "mem": "2gb",
+        "walltime": "01:00:00"
+      },
+      "resources_used": {
+        "walltime": "00:50:00",
+        "cpupercent": 200,
+        "ncpus": 2
+      }
+    },
+    "111.server": {
+      "Job_Name": "interactive",
+      "queue": "cpu_inter_exec",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "R",
+      "Resource_List": {
+        "ncpus": 1,
+        "mem": "1gb",
+        "walltime": "00:10:00"
+      },
+      "resources_used": {
+        "walltime": "00:01:00"
+      }
+    },
+    "333.server": {
+      "Job_Name": "finished",
+      "queue": "batch",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "C",
+      "qtime": "Mon Jan  1 00:00:00 2024",
+      "stime": "Mon Jan  1 00:05:00 2024",
+      "Resource_List": {
+        "ncpus": 4,
+        "mem": "4gb",
+        "walltime": "01:00:00"
+      },
+      "resources_used": {
+        "walltime": "00:10:00",
+        "cput": "00:02:00",
+        "vmem": "100mb",
+        "cpupercent": 400,
+        "ncpus": 4
+      },
+      "Exit_status": 1,
+      "mtime": "Mon Jan  1 00:15:00 2024",
+      "obittime": "Mon Jan  1 00:15:00 2024"
+    }
+  }
+}

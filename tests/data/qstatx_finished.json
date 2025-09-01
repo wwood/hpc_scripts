@@ -1,0 +1,40 @@
+{
+  "timestamp": 0,
+  "pbs_version": "test",
+  "pbs_server": "server",
+  "Jobs": {
+    "10592488.aqua": {
+      "Job_Name": "snakejobsemibin.23.sh",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "F",
+      "queue": "cpu_batch_exec",
+      "resources_used": {
+        "cpupercent": 2400,
+        "cput": "415:39:01",
+        "mem": "26482476kb",
+        "ncpus": 24,
+        "ngpus": 0,
+        "vmem": "137190880kb",
+        "walltime": "20:28:57"
+      },
+      "Resource_List": {
+        "cpu_id": "any",
+        "mem": "128gb",
+        "ncpus": 24,
+        "nfpgas": 0,
+        "ngpus": 0,
+        "nodect": 1,
+        "place": "pack",
+        "select": "1:cpu_id=any:mem=128gb:ncpus=24:nfpgas=0:ngpus=0",
+        "walltime": "24:00:00"
+      },
+      "ctime": "Fri Aug 22 20:30:34 2025",
+      "qtime": "Fri Aug 22 20:30:34 2025",
+      "stime": "Fri Aug 22 21:04:04 2025",
+      "mtime": "Sat Aug 23 17:33:03 2025",
+      "obittime": "Sat Aug 23 17:33:03 2025",
+      "Exit_status": 0
+    }
+  }
+}

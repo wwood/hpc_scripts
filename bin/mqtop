@@ -13,6 +13,9 @@ import subprocess
 import time
 import unicodedata
 import textwrap
+import json
+import getpass
+from datetime import datetime, timedelta
 from importlib.machinery import SourceFileLoader
 
 import curses
@@ -39,6 +42,188 @@ ORANGE = "\033[33m"
 
 # Automatically refresh the job table every 10 minutes (in seconds)
 REFRESH_INTERVAL = 10 * 60
+
+
+def _parse_time(val: str | None) -> int | None:
+    """Parse PBS time strings into Unix timestamps."""
+    if not val:
+        return None
+    try:
+        dt = datetime.strptime(val.strip(), "%a %b %d %H:%M:%S %Y")
+        return int(dt.timestamp())
+    except ValueError:
+        return None
+
+
+def _parse_hms(val: str | None) -> int:
+    """Convert ``HH:MM:SS`` strings to seconds."""
+    if not val:
+        return 0
+    parts = [int(p) for p in val.split(":")]
+    while len(parts) < 3:
+        parts.insert(0, 0)
+    h, m, s = parts[-3:]
+    return h * 3600 + m * 60 + s
+
+
+_mem_re = re.compile(r"(\d+)([a-zA-Z]+)")
+
+
+def _mem_to_gb(val: str | None) -> float:
+    if not val:
+        return 0.0
+    m = _mem_re.match(str(val))
+    if not m:
+        return 0.0
+    num = int(m.group(1))
+    unit = m.group(2).lower()
+    if unit == "gb":
+        return float(num)
+    if unit == "mb":
+        return num / 1024.0
+    if unit == "kb":
+        return num / (1024.0 * 1024)
+    if unit == "b":
+        return num / (1024.0 * 1024 * 1024)
+    return 0.0
+
+
+def _mem_to_kb(val: str | None) -> int:
+    if not val:
+        return 0
+    m = _mem_re.match(str(val))
+    if not m:
+        return 0
+    num = int(m.group(1))
+    unit = m.group(2).lower()
+    if unit == "kb":
+        return num
+    if unit == "mb":
+        return num * 1024
+    if unit == "gb":
+        return num * 1024 * 1024
+    if unit == "b":
+        return num // 1024
+    return 0
+
+
+def _parse_job(obj: dict) -> dict:
+    """Convert raw JSON job info into the format used by ``mqtop``."""
+    job = {"id": obj.get("id"), "queue": obj.get("queue"), "state": obj.get("job_state")}
+    job["name"] = obj.get("Job_Name")
+    job["user"] = obj.get("euser") or obj.get("Job_Owner", "").split("@")[0]
+    job["qtime"] = _parse_time(obj.get("qtime"))
+    job["start_time"] = _parse_time(obj.get("stime"))
+    job["obittime"] = _parse_time(obj.get("obittime"))
+    job["mtime"] = _parse_time(obj.get("mtime"))
+    rl = obj.get("Resource_List", {}) or {}
+    job["ncpus"] = int(rl.get("ncpus", 0) or 0)
+    job["ngpus"] = int(rl.get("ngpus", 0) or 0)
+    job["mem_request_gb"] = _mem_to_gb(rl.get("mem"))
+    wt = rl.get("walltime")
+    if wt:
+        job["walltime_total"] = _parse_hms(wt)
+        job["walltime"] = job["walltime_total"]
+    ru = obj.get("resources_used", {}) or {}
+    job["cpupercent"] = int(ru.get("cpupercent", 0) or 0)
+    job["ncpus_used"] = int(ru.get("ncpus", 0) or 0)
+    job["mem_usage"] = _mem_to_kb(ru.get("mem"))
+    job["vmem_used_kb"] = _mem_to_kb(ru.get("vmem"))
+    job["walltime_used"] = _parse_hms(ru.get("walltime"))
+    if "walltime_total" in job and job["walltime_used"]:
+        job["walltime"] = job["walltime_total"] - job["walltime_used"]
+    job["cput_used"] = _parse_hms(ru.get("cput"))
+    if "Exit_status" in obj:
+        try:
+            job["exit_status"] = int(obj["Exit_status"])
+        except Exception:
+            pass
+    return job
+
+
+def _load_jobs_from_json(path: str, user: str) -> list[dict]:
+    """Load jobs for *user* from a qstat JSON file."""
+    if not path or not os.path.exists(path):
+        return []
+    jobs: list[dict] = []
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    rust_bin = os.path.join(
+        repo_root, "qstat_filter", "target", "release", "qstat_filter"
+    )
+
+    proc = None
+    if os.path.exists(rust_bin):
+        try:
+            proc = subprocess.run(
+                [rust_bin, path, user], text=True, capture_output=True
+            )
+        except Exception:
+            proc = None
+    if proc and proc.returncode == 0 and proc.stdout.strip():
+        for line in proc.stdout.splitlines():
+            try:
+                jobs.append(_parse_job(json.loads(line)))
+            except Exception:
+                continue
+        return jobs
+
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except Exception:
+        return []
+    for jid, info in (data.get("Jobs") or {}).items():
+        if info.get("euser") != user:
+            continue
+        info = dict(info)
+        info["id"] = jid
+        jobs.append(_parse_job(info))
+    return jobs
+
+
+def _fetch_job(job_id: str, user: str) -> dict | None:
+    """Return job info for *job_id* using ``qstat -xf``."""
+    try:
+        proc = subprocess.run(
+            ["qstat", "-xf", "-F", "json", str(job_id)],
+            text=True,
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        data = json.loads(proc.stdout)
+        jid, info = next(iter(data.get("Jobs", {}).items()))
+        info["id"] = jid
+        if info.get("euser") and info["euser"] != user:
+            return None
+        return _parse_job(info)
+    except Exception:
+        return None
+
+
+def _recent_finished_jobs(user: str, existing: set[str]) -> list[dict]:
+    """Fetch recently finished jobs not yet in history."""
+    cutoff = (datetime.now() - timedelta(minutes=10)).strftime("%m%d%H%M")
+    try:
+        proc = subprocess.run(
+            ["qselect", "-u", user, f"-te.gt.{cutoff}"],
+            text=True,
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        return []
+    jobs = []
+    for jid in proc.stdout.split():
+        if jid in existing:
+            continue
+        info = _fetch_job(jid, user)
+        if info:
+            jobs.append(info)
+    return jobs
 
 
 def grafana_url(job_id: str) -> str:
@@ -413,37 +598,47 @@ def format_jobs(jobs, now=None):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Interactive job viewer")
-    parser.add_argument("--qstat-f-file", help="Use qstat -f output from file", default=None)
-    parser.add_argument("--qstat-xf-file", help="Use qstat -xf output from file", default=None)
-    parser.add_argument("--qstat-file", help=argparse.SUPPRESS, default=None)
     parser.add_argument(
-        "--max-jobs",
-        type=int,
-        default=1000,
-        help="Maximum number of jobs to load",
+        "--qstat-json",
+        help="Path to qstat.json",
+        default="/pkg/hpc/scripts/qstat.json",
+    )
+    parser.add_argument(
+        "--qstatx-json",
+        help="Path to qstatx.json",
+        default="/pkg/hpc/scripts/qstatx.json",
     )
     parser.add_argument(
         "--print-first-page",
         action="store_true",
         help="Print first page of job table to stdout and exit",
     )
+    parser.add_argument(
+        "--profile",
+        metavar="FILE",
+        help="Write cProfile stats to FILE",
+    )
     args = parser.parse_args()
 
-    if args.qstat_file and not args.qstat_f_file:
-        args.qstat_f_file = args.qstat_file
+    user = getpass.getuser()
+
+    profiler = None
+    if args.profile:
+        import cProfile
+
+        profiler = cProfile.Profile()
+        profiler.enable()
 
     def get_jobs(include_history: bool = False):
-        if args.qstat_f_file or args.qstat_xf_file:
-            active = mqstat.parse_qstat(path=args.qstat_f_file) if args.qstat_f_file else []
-            hist = mqstat.parse_qstat(path=args.qstat_xf_file) if args.qstat_xf_file else []
-            job_dict = {j["id"]: j for j in active}
+        active = _load_jobs_from_json(args.qstat_json, user)
+        job_dict = {j["id"]: j for j in active}
+        if include_history:
+            hist = _load_jobs_from_json(args.qstatx_json, user)
             for job in hist:
                 job_dict.setdefault(job["id"], job)
-            return list(job_dict.values())
-        return mqstat.parse_qstat(
-            include_history=include_history,
-            max_jobs=args.max_jobs,
-        )
+            for job in _recent_finished_jobs(user, set(job_dict)):
+                job_dict.setdefault(job["id"], job)
+        return list(job_dict.values())
 
     if args.print_first_page:
         jobs = get_jobs(include_history=True)
@@ -473,15 +668,11 @@ def main() -> None:
         )
         all_jobs = running + queued + finished_jobs
         lines, _ = format_jobs(all_jobs, now=now)
-        warnings = []
-        if mqstat.parse_qstat.limit_hit:
-            warnings.append("qstat -f may not have returned all running/queued jobs")
-        if getattr(mqstat.parse_qstat, "hist_limit_hit", False):
-            warnings.append("qstat -xf may not have returned all finished jobs")
-        for w in warnings:
-            print(f"\x1b[91mWARNING: {w}; increase --max-jobs\x1b[0m")
         for line in lines[:24]:
             print(line)
+        if profiler:
+            profiler.disable()
+            profiler.dump_stats(args.profile)
         return
 
     def _draw(stdscr):
@@ -702,17 +893,6 @@ def main() -> None:
 
             stdscr.erase()
             warning = None
-            warning_parts = []
-            if mqstat.parse_qstat.limit_hit:
-                warning_parts.append("qstat -f missing running/queued jobs")
-            if getattr(mqstat.parse_qstat, "hist_limit_hit", False):
-                warning_parts.append("qstat -xf missing finished jobs")
-            if warning_parts:
-                warning = (
-                    "\x1b[91mWARNING: "
-                    + " and ".join(warning_parts)
-                    + "; increase --max-jobs\x1b[0m"
-                )
             page = maxy - 3
             if lines:
                 max_sel = len(lines) - 1
@@ -745,6 +925,10 @@ def main() -> None:
                 time.sleep(0.1)
 
     curses.wrapper(_draw)
+
+    if profiler:
+        profiler.disable()
+        profiler.dump_stats(args.profile)
 
 
 if __name__ == "__main__":
