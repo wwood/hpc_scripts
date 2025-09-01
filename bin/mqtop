@@ -10,6 +10,7 @@ import importlib.util
 import os
 import re
 import subprocess
+import sys
 import time
 import unicodedata
 import textwrap
@@ -42,6 +43,10 @@ ORANGE = "\033[33m"
 
 # Automatically refresh the job table every 10 minutes (in seconds)
 REFRESH_INTERVAL = 10 * 60
+
+# Maximum number of jobs to display. If more jobs are found, the list is
+# truncated and the user is notified.
+MAX_JOBS = 1000
 
 
 def _parse_time(val: str | None) -> int | None:
@@ -632,12 +637,17 @@ def main() -> None:
     def get_jobs(include_history: bool = False):
         active = _load_jobs_from_json(args.qstat_json, user)
         job_dict = {j["id"]: j for j in active}
-        if include_history:
+        if include_history and len(job_dict) <= MAX_JOBS:
             hist = _load_jobs_from_json(args.qstatx_json, user)
             for job in hist:
+                if len(job_dict) >= MAX_JOBS:
+                    break
                 job_dict.setdefault(job["id"], job)
-            for job in _recent_finished_jobs(user, set(job_dict)):
-                job_dict.setdefault(job["id"], job)
+            if len(job_dict) < MAX_JOBS:
+                for job in _recent_finished_jobs(user, set(job_dict)):
+                    if len(job_dict) >= MAX_JOBS:
+                        break
+                    job_dict.setdefault(job["id"], job)
         return list(job_dict.values())
 
     if args.print_first_page:
@@ -667,6 +677,12 @@ def main() -> None:
             finished.values(), key=lambda j: j.get("obittime") or j.get("mtime", 0), reverse=True
         )
         all_jobs = running + queued + finished_jobs
+        if len(all_jobs) > MAX_JOBS:
+            print(
+                f"More than {MAX_JOBS} jobs; showing first {MAX_JOBS}.",
+                file=sys.stderr,
+            )
+            all_jobs = all_jobs[:MAX_JOBS]
         lines, _ = format_jobs(all_jobs, now=now)
         for line in lines[:24]:
             print(line)
@@ -706,6 +722,9 @@ def main() -> None:
         last_refresh = 0.0
         user_warning = None
         user_warn_until = 0.0
+        fetch_history = False
+        running = []
+        queued = []
 
         while True:
             maxy, maxx = stdscr.getmaxyx()
@@ -858,7 +877,7 @@ def main() -> None:
                 user_warn_until = time.time() + 2
 
             if refresh:
-                jobs = get_jobs(include_history=True)
+                jobs = _load_jobs_from_json(args.qstat_json, user)
                 now = time.time()
                 running = []
                 queued = []
@@ -883,13 +902,44 @@ def main() -> None:
 
                 running.sort(key=lambda j: j.get("walltime_used", 0), reverse=True)
                 queued.sort(key=lambda j: now - j.get("qtime", now), reverse=True)
+                active_jobs = running + (queued if show_queued else [])
+                if len(active_jobs) > MAX_JOBS:
+                    user_warning = (
+                        f"More than {MAX_JOBS} running/queued jobs; showing first {MAX_JOBS}. Finished jobs skipped."
+                    )
+                    user_warn_until = time.time() + 5
+                    active_jobs = active_jobs[:MAX_JOBS]
+                    fetch_history = False
+                else:
+                    user_warning = "Loading finished jobs..."
+                    user_warn_until = float("inf")
+                    fetch_history = True
+                lines, job_rows = format_jobs(active_jobs, now=now)
+                last_refresh = time.time()
+                refresh = False
+            elif fetch_history:
+                now = time.time()
+                existing = {j["id"] for j in running + queued} | set(finished)
+                hist = _load_jobs_from_json(args.qstatx_json, user)
+                for job in hist:
+                    finished.setdefault(job["id"], job)
+                existing.update(finished)
+                for job in _recent_finished_jobs(user, existing):
+                    finished.setdefault(job["id"], job)
                 finished_jobs = sorted(
                     finished.values(), key=lambda j: j.get("obittime") or j.get("mtime", 0), reverse=True
                 )
                 all_jobs = running + (queued if show_queued else []) + finished_jobs
+                if len(all_jobs) > MAX_JOBS:
+                    user_warning = f"More than {MAX_JOBS} jobs; showing first {MAX_JOBS}."
+                    user_warn_until = time.time() + 5
+                    all_jobs = all_jobs[:MAX_JOBS]
+                else:
+                    user_warning = None
+                    user_warn_until = 0
                 lines, job_rows = format_jobs(all_jobs, now=now)
+                fetch_history = False
                 last_refresh = time.time()
-                refresh = False
 
             stdscr.erase()
             warning = None
