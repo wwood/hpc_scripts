@@ -142,6 +142,80 @@ def test_mqtop_history_only_print_first_page():
     assert lines.count(lines[0]) == 1
 
 
+def test_mqtop_updates_recent_finished_job():
+    import runpy, io, contextlib, json
+
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    qstat_f = repo / "tests" / "data" / "qstat_empty.json"
+    qstat_x = repo / "tests" / "data" / "qstatx_running.json"
+    mod = runpy.run_path(str(script))
+    calls = []
+
+    def fake_fetch(jid, user):
+        calls.append(jid)
+        with open(repo / "tests" / "data" / "qstatx_finished.json") as fh:
+            data = json.load(fh)
+        info = data["Jobs"][jid]
+        info["id"] = jid
+        return mod["_parse_job"](info)
+
+    globs = mod["main"].__globals__
+    globs["_fetch_job"] = fake_fetch
+    globs["_recent_finished_jobs"] = lambda u, e: []
+
+    sys.argv = [
+        "mqtop",
+        "--print-first-page",
+        "--qstat-json",
+        str(qstat_f),
+        "--qstatx-json",
+        str(qstat_x),
+    ]
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        mod["main"]()
+    lines = [l for l in buf.getvalue().splitlines() if l]
+    assert len(lines) == 2
+    header = [c for c in split_cols(lines[0]) if c]
+    row = split_cols(lines[1])
+    if len(row) < len(header):
+        row.insert(header.index("age"), "")
+    assert row[0] == "10592488"
+    assert row[header.index("state")] == "F"
+    assert calls == ["10592488.aqua"]
+
+
+def test_mqtop_deduplicates_overlapping_jobs():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    qstat_f = repo / "tests" / "data" / "qstat.json"
+    qstat_x = repo / "tests" / "data" / "qstatx_duplicate.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--print-first-page",
+            "--qstat-json",
+            str(qstat_f),
+            "--qstatx-json",
+            str(qstat_x),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    lines = [l for l in result.stdout.splitlines() if l]
+    assert len(lines) == 5
+    assert sum("123.server" in l for l in lines) == 1
+    row = next(l for l in lines if "123.server" in l)
+    cols = [c for c in split_cols(row) if c]
+    assert cols[0] == "123.server"
+    assert cols[-2] == "R"
+    assert cols[-1] == "batch"
+
+
 def test_mqtop_profile(tmp_path):
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqtop"

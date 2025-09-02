@@ -189,10 +189,10 @@ def _load_jobs_from_json(path: str, user: str) -> list[dict]:
 
 
 def _fetch_job(job_id: str, user: str) -> dict | None:
-    """Return job info for *job_id* using ``qstat -xf``."""
+    """Return job info for *job_id* using ``qstat -f``."""
     try:
         proc = subprocess.run(
-            ["qstat", "-xf", "-F", "json", str(job_id)],
+            ["qstat", "-f", "-F", "json", str(job_id)],
             text=True,
             capture_output=True,
         )
@@ -681,7 +681,13 @@ def main() -> None:
             for job in hist:
                 if len(job_dict) >= MAX_JOBS:
                     break
-                job_dict.setdefault(job["id"], job)
+                if job["id"] in job_dict:
+                    continue
+                if job.get("state") not in ("C", "F"):
+                    updated = _fetch_job(job["id"], user)
+                    if updated:
+                        job = updated
+                job_dict[job["id"]] = job
             if len(job_dict) < MAX_JOBS:
                 for job in _recent_finished_jobs(user, set(job_dict)):
                     if len(job_dict) >= MAX_JOBS:
@@ -972,6 +978,8 @@ def main() -> None:
                 existing = {j["id"] for j in running + queued} | set(finished)
                 hist = _load_jobs_from_json(args.qstatx_json, user)
                 for job in hist:
+                    if job["id"] in existing:
+                        continue
                     finished.setdefault(job["id"], job)
                 existing.update(finished)
                 for job in _recent_finished_jobs(user, existing):
