@@ -269,6 +269,51 @@ def grafana_url(job_id: str) -> str:
     )
 
 
+def _view_log_command(job: dict, which: str, user: str) -> tuple[str | list[str] | None, bool]:
+    """Return a command to view a job's stdout or stderr.
+
+    Parameters
+    ----------
+    job:
+        Job dictionary as produced by :func:`_parse_job`.
+    which:
+        ``"o"`` for stdout or ``"e"`` for stderr.
+    user:
+        Username for ``qstat -f`` queries.
+
+    Returns
+    -------
+    (cmd, shell):
+        ``cmd`` is either a list of arguments or a shell command string. ``shell``
+        indicates whether ``cmd`` should be executed via ``shell=True``.
+    """
+
+    suffix = "ER" if which == "e" else "OU"
+    state = job.get("state")
+    if state == "R":
+        info = _fetch_job(job["id"], user)
+        if not info or info.get("state") != "R":
+            if info:
+                job.update(info)
+            state = job.get("state")
+    if state in ("C", "F"):
+        try:
+            stdout_path, stderr_path = mqsub.PbsJobInfo.stdout_and_stderr_paths(job["id"])
+        except Exception:
+            stdout_path = stderr_path = None
+        path = stderr_path if which == "e" else stdout_path
+        if path and os.path.isdir(path):
+            path = os.path.join(path, f"{job['id']}.{suffix}")
+        if path and os.path.exists(path):
+            return ["less", path], False
+    elif state == "R":
+        cmd = (
+            f"/pkg/hpc/scripts/ssh-to-job {job['id']} cat /var/spool/PBS/spool/{job['id']}.{suffix} | less"
+        )
+        return cmd, True
+    return None, False
+
+
 def refresh_due(last_refresh: float, now: float | None = None, interval: int = REFRESH_INTERVAL) -> bool:
     """Return ``True`` if a refresh should occur.
 
@@ -862,32 +907,11 @@ def main() -> None:
             elif key in (ord("o"), ord("e")):
                 if 0 < selected <= len(job_rows):
                     job = job_rows[selected - 1]
-                    state = job.get("state")
-                    if state in ("C", "F"):
-                        try:
-                            stdout_path, stderr_path = mqsub.PbsJobInfo.stdout_and_stderr_paths(job["id"])
-                        except Exception:
-                            stdout_path = stderr_path = None
-                        if key == ord("e"):
-                            path = stderr_path
-                            suffix = "ER"
-                        else:
-                            path = stdout_path
-                            suffix = "OU"
-                        if path and os.path.isdir(path):
-                            path = os.path.join(path, f"{job['id']}.{suffix}")
-                        if path and os.path.exists(path):
-                            curses.endwin()
-                            subprocess.call(["less", path])
-                            stdscr.clear()
-                            curses.curs_set(0)
-                    elif state == "R":
-                        suffix = "ER" if key == ord("e") else "OU"
-                        cmd = (
-                            f"/pkg/hpc/scripts/ssh-to-job {job['id']} cat /var/spool/PBS/spool/{job['id']}.{suffix} | less"
-                        )
+                    which = "e" if key == ord("e") else "o"
+                    cmd, use_shell = _view_log_command(job, which, user)
+                    if cmd:
                         curses.endwin()
-                        subprocess.call(cmd, shell=True)
+                        subprocess.call(cmd, shell=use_shell)
                         stdscr.clear()
                         curses.curs_set(0)
             elif key == ord("f"):

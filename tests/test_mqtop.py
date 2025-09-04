@@ -293,3 +293,37 @@ def test_mqtop_profile(tmp_path):
     stats = pstats.Stats(str(prof))
     assert any("get_jobs" in func for (_, _, func) in stats.stats)
 
+
+def test_view_log_command_checks_running(tmp_path):
+    import runpy
+
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    mod = runpy.run_path(str(script))
+
+    job = {"id": "123.server", "state": "R"}
+
+    logdir = tmp_path
+    stderr_file = logdir / f"{job['id']}.ER"
+    stderr_file.write_text("err")
+
+    mod["mqsub"].PbsJobInfo.stdout_and_stderr_paths = staticmethod(
+        lambda jid, segregated_logs_dir=None: (str(logdir), str(logdir))
+    )
+
+    calls = []
+
+    def fake_fetch(jid, user):
+        calls.append(jid)
+        return {"id": jid, "state": "F"}
+
+    mod["_fetch_job"] = fake_fetch
+    mod["_view_log_command"].__globals__["_fetch_job"] = fake_fetch
+
+    cmd, shell = mod["_view_log_command"](job, "e", "user")
+
+    assert calls == ["123.server"]
+    assert job["state"] == "F"
+    assert shell is False
+    assert cmd == ["less", str(stderr_file)]
+
