@@ -114,6 +114,18 @@ def _mem_to_kb(val: str | None) -> int:
     return 0
 
 
+def _base_job_id(jid: str | None) -> str:
+    """Return *jid* without any server suffix.
+
+    Job IDs sometimes appear with a ``.server`` suffix depending on the
+    command producing them (``qstat`` vs ``qselect``). For deduplication we
+    compare IDs using this normalised form.
+    """
+    if not jid:
+        return ""
+    return str(jid).split(".")[0]
+
+
 def _parse_job(obj: dict) -> dict:
     """Convert raw JSON job info into the format used by ``mqtop``."""
     job = {"id": obj.get("id"), "queue": obj.get("queue"), "state": obj.get("job_state")}
@@ -246,13 +258,25 @@ def _recent_finished_jobs(user: str, existing: set[str]) -> tuple[list[dict], in
         return [], 0, 0
     ids = proc.stdout.split()
     jobs = []
+    # Normalise existing IDs to handle cases where qselect omits the server
+    # suffix (e.g. "123" vs "123.server"). We keep both forms in the set to
+    # avoid fetching duplicates.
+    existing_ids = set(existing)
+    existing_ids |= {_base_job_id(j) for j in existing}
     for jid in ids:
-        if jid in existing:
+        base = _base_job_id(jid)
+        if jid in existing_ids or base in existing_ids:
             continue
         info = _fetch_job(jid, user)
         if info:
+            full = info.get("id")
+            base_full = _base_job_id(full)
+            if full in existing_ids or base_full in existing_ids:
+                continue
             info["source"] = "qselect/qstat -f"
             jobs.append(info)
+            existing_ids.add(full)
+            existing_ids.add(base_full)
     return jobs, len(ids), len(jobs)
 
 
@@ -260,11 +284,19 @@ def _load_history(qstatx_path: str, user: str, existing: set[str]) -> dict[str, 
     """Return finished jobs from qstatx and recent ``qselect`` results."""
 
     finished: dict[str, dict] = {}
+    # Track both full and base job IDs to prevent duplicates when qselect or
+    # qstatx omit the server suffix.
+    existing_ids = set(existing)
+    existing_ids |= {_base_job_id(j) for j in existing}
     hist = _load_jobs_from_json(qstatx_path, user, "qstatx.json")
     for job in hist:
-        if job["id"] in existing:
+        jid = job["id"]
+        base = _base_job_id(jid)
+        if jid in existing_ids or base in existing_ids:
             continue
-        finished[job["id"]] = job
+        finished[jid] = job
+        existing_ids.add(jid)
+        existing_ids.add(base)
     existing = set(existing) | set(finished)
     recent, total, updated_count = _recent_finished_jobs(user, existing)
     if total:

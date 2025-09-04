@@ -270,6 +270,38 @@ def test_mqtop_reports_qselect_stats():
     assert row[header.index("source")] == "qselect/qstat -f"
 
 
+def test_recent_finished_jobs_skips_existing_without_suffix():
+    import runpy
+
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    mod = runpy.run_path(str(script))
+
+    globs = mod["_recent_finished_jobs"].__globals__
+    original_run = globs["subprocess"].run
+
+    class Proc:
+        returncode = 0
+        stdout = "123\n"
+
+    try:
+        globs["subprocess"].run = lambda *a, **k: Proc()
+
+        def fake_fetch(jid, user):
+            return {"id": "123.server", "state": "F"}
+
+        mod["_fetch_job"] = fake_fetch
+        globs["_fetch_job"] = fake_fetch
+
+        jobs, total, updated = mod["_recent_finished_jobs"]("user", {"123.server"})
+    finally:
+        globs["subprocess"].run = original_run
+
+    assert jobs == []
+    assert total == 1
+    assert updated == 0
+
+
 def test_history_loader_runs_in_background():
     import runpy, time
 
