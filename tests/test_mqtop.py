@@ -47,11 +47,13 @@ def test_mqtop_print_first_page():
         "state",
         "queue",
         "note",
+        "source",
     ]
     assert "222.server" in lines[1]
     assert "almostdone" in lines[1]
     assert "  2" in lines[1]
     assert "R      batch" in lines[1]
+    assert split_cols(lines[1])[-1] == "qstat.json"
     assert "123.server" in lines[-1]
 
 
@@ -136,9 +138,11 @@ def test_mqtop_history_only_print_first_page():
         "state",
         "queue",
         "note",
+        "source",
     ]
     assert "10592488" in lines[1]
     assert "🐍semibin.23.sh" in lines[1]
+    assert split_cols(lines[1])[-1] == "qstatx.json"
     assert lines.count(lines[0]) == 1
 
 
@@ -162,7 +166,7 @@ def test_mqtop_updates_recent_finished_job():
 
     globs = mod["main"].__globals__
     globs["_fetch_job"] = fake_fetch
-    globs["_recent_finished_jobs"] = lambda u, e: []
+    globs["_recent_finished_jobs"] = lambda u, e: ([], 0, 0)
 
     sys.argv = [
         "mqtop",
@@ -180,10 +184,14 @@ def test_mqtop_updates_recent_finished_job():
     assert len(lines) == 2
     header = [c for c in split_cols(lines[0]) if c]
     row = split_cols(lines[1])
-    if len(row) < len(header):
-        row.insert(header.index("age"), "")
+    while len(row) < len(header):
+        if len(row) <= header.index("age"):
+            row.insert(header.index("age"), "")
+        else:
+            row.insert(header.index("note"), "")
     assert row[0] == "10592488"
     assert row[header.index("state")] == "F"
+    assert row[header.index("source")] == "qstatx.json"
     assert calls == ["10592488.aqua"]
 
 
@@ -212,8 +220,54 @@ def test_mqtop_deduplicates_overlapping_jobs():
     row = next(l for l in lines if "123.server" in l)
     cols = [c for c in split_cols(row) if c]
     assert cols[0] == "123.server"
-    assert cols[-2] == "R"
-    assert cols[-1] == "batch"
+    assert cols[-3] == "R"
+    assert cols[-2] == "batch"
+    assert cols[-1] == "qstat.json"
+
+
+def test_mqtop_reports_qselect_stats():
+    import runpy, io, contextlib, json
+
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    qstat_empty = repo / "tests" / "data" / "qstat_empty.json"
+    mod = runpy.run_path(str(script))
+
+    with open(repo / "tests" / "data" / "qstatx_finished.json") as fh:
+        data = json.load(fh)
+    jid, info = next(iter(data["Jobs"].items()))
+    info["id"] = jid
+    job = mod["_parse_job"](info)
+    job["source"] = "qselect/qstat -f"
+
+    globs = mod["main"].__globals__
+    globs["_recent_finished_jobs"] = lambda u, e: ([job], 3, 1)
+
+    sys.argv = [
+        "mqtop",
+        "--print-first-page",
+        "--qstat-json",
+        str(qstat_empty),
+        "--qstatx-json",
+        str(qstat_empty),
+    ]
+
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+        mod["main"]()
+
+    lines = [l for l in buf_out.getvalue().splitlines() if l]
+    assert "qselect detected 3 jobs; updated 1" in buf_err.getvalue()
+    header = [c for c in split_cols(lines[0]) if c]
+    row = split_cols(lines[1])
+    while len(row) < len(header):
+        if len(row) <= header.index("age"):
+            row.insert(header.index("age"), "")
+        else:
+            row.insert(header.index("note"), "")
+    assert row[0] == jid.split(".")[0]
+    assert row[header.index("source")] == "qselect/qstat -f"
 
 
 def test_mqtop_profile(tmp_path):

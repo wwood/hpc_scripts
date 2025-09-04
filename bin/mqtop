@@ -147,8 +147,20 @@ def _parse_job(obj: dict) -> dict:
     return job
 
 
-def _load_jobs_from_json(path: str, user: str) -> list[dict]:
-    """Load jobs for *user* from a qstat JSON file."""
+def _load_jobs_from_json(path: str, user: str, source: str) -> list[dict]:
+    """Load jobs for *user* from a qstat JSON file.
+
+    Parameters
+    ----------
+    path:
+        Path to the JSON file to load.
+    user:
+        User whose jobs should be returned.
+    source:
+        String describing the origin of the data (``qstat.json`` or
+        ``qstatx.json``). This value is attached to each returned job via the
+        ``source`` key.
+    """
     if not path or not os.path.exists(path):
         return []
     jobs: list[dict] = []
@@ -169,7 +181,9 @@ def _load_jobs_from_json(path: str, user: str) -> list[dict]:
     if proc and proc.returncode == 0 and proc.stdout.strip():
         for line in proc.stdout.splitlines():
             try:
-                jobs.append(_parse_job(json.loads(line)))
+                job = _parse_job(json.loads(line))
+                job["source"] = source
+                jobs.append(job)
             except Exception:
                 continue
         return jobs
@@ -184,7 +198,9 @@ def _load_jobs_from_json(path: str, user: str) -> list[dict]:
             continue
         info = dict(info)
         info["id"] = jid
-        jobs.append(_parse_job(info))
+        job = _parse_job(info)
+        job["source"] = source
+        jobs.append(job)
     return jobs
 
 
@@ -211,8 +227,13 @@ def _fetch_job(job_id: str, user: str) -> dict | None:
         return None
 
 
-def _recent_finished_jobs(user: str, existing: set[str]) -> list[dict]:
-    """Fetch recently finished jobs not yet in history."""
+def _recent_finished_jobs(user: str, existing: set[str]) -> tuple[list[dict], int, int]:
+    """Fetch recently finished jobs not yet in history.
+
+    Returns a tuple ``(jobs, total, updated)`` where ``total`` is the number of
+    job IDs reported by ``qselect`` and ``updated`` is the number of jobs for
+    which we successfully fetched details via ``qstat -f``.
+    """
     cutoff = (datetime.now() - timedelta(minutes=10)).strftime("%m%d%H%M")
     try:
         proc = subprocess.run(
@@ -221,15 +242,17 @@ def _recent_finished_jobs(user: str, existing: set[str]) -> list[dict]:
             capture_output=True,
         )
     except FileNotFoundError:
-        return []
+        return [], 0, 0
+    ids = proc.stdout.split()
     jobs = []
-    for jid in proc.stdout.split():
+    for jid in ids:
         if jid in existing:
             continue
         info = _fetch_job(jid, user)
         if info:
+            info["source"] = "qselect/qstat -f"
             jobs.append(info)
-    return jobs
+    return jobs, len(ids), len(jobs)
 
 
 def grafana_url(job_id: str) -> str:
@@ -437,6 +460,7 @@ def format_jobs(jobs, maxx, now=None):
         "state",
         "queue",
         "note",
+        "source",
     ]
 
     for job in jobs:
@@ -547,6 +571,7 @@ def format_jobs(jobs, maxx, now=None):
                 "state": state,
                 "queue": queue,
                 "note": note,
+                "source": job.get("source", ""),
                 "raw": job,
                 "row_color": row_color,
             }
@@ -567,6 +592,7 @@ def format_jobs(jobs, maxx, now=None):
     state_w = max(len(headers[11]), max(visible_len(r["state"]) for r in rows))
     queue_w = max(len(headers[12]), max(visible_len(r["queue"]) for r in rows))
     note_w = max(len(headers[13]), max(visible_len(r["note"]) for r in rows))
+    source_w = max(len(headers[14]), max(visible_len(r["source"]) for r in rows))
     name_w_candidate = max(len(headers[1]), max(visible_len(r["name"]) for r in rows))
     other_w = (
         id_w
@@ -582,6 +608,7 @@ def format_jobs(jobs, maxx, now=None):
         + state_w
         + queue_w
         + note_w
+        + source_w
         + 2 * (len(headers) - 1)
     )
     min_name_w = len("add_otus_to_backend_db.84.sh") * 2
@@ -605,6 +632,7 @@ def format_jobs(jobs, maxx, now=None):
         headers[11].ljust(state_w),
         headers[12].ljust(queue_w),
         headers[13].ljust(note_w),
+        headers[14].ljust(source_w),
     ]
     lines = ["  ".join(header_parts)]
 
@@ -624,6 +652,7 @@ def format_jobs(jobs, maxx, now=None):
             ljust_ansi(r["state"], state_w),
             ljust_ansi(r["queue"], queue_w),
             ljust_ansi(r["note"], note_w),
+            ljust_ansi(r["source"], source_w),
         ]
         coloured_parts = []
         row_colour = r.get("row_color", "")
@@ -674,10 +703,10 @@ def main() -> None:
         profiler.enable()
 
     def get_jobs(include_history: bool = False):
-        active = _load_jobs_from_json(args.qstat_json, user)
+        active = _load_jobs_from_json(args.qstat_json, user, "qstat.json")
         job_dict = {j["id"]: j for j in active}
         if include_history and len(job_dict) <= MAX_JOBS:
-            hist = _load_jobs_from_json(args.qstatx_json, user)
+            hist = _load_jobs_from_json(args.qstatx_json, user, "qstatx.json")
             for job in hist:
                 if len(job_dict) >= MAX_JOBS:
                     break
@@ -686,10 +715,17 @@ def main() -> None:
                 if job.get("state") not in ("C", "F"):
                     updated = _fetch_job(job["id"], user)
                     if updated:
+                        updated["source"] = job["source"]
                         job = updated
                 job_dict[job["id"]] = job
             if len(job_dict) < MAX_JOBS:
-                for job in _recent_finished_jobs(user, set(job_dict)):
+                recent, total, updated_count = _recent_finished_jobs(user, set(job_dict))
+                if total:
+                    print(
+                        f"qselect detected {total} jobs; updated {updated_count}",
+                        file=sys.stderr,
+                    )
+                for job in recent:
                     if len(job_dict) >= MAX_JOBS:
                         break
                     job_dict.setdefault(job["id"], job)
@@ -932,7 +968,7 @@ def main() -> None:
                 user_warn_until = time.time() + 2
 
             if refresh:
-                jobs = _load_jobs_from_json(args.qstat_json, user)
+                jobs = _load_jobs_from_json(args.qstat_json, user, "qstat.json")
                 now = time.time()
                 running = []
                 queued = []
@@ -976,13 +1012,19 @@ def main() -> None:
             elif fetch_history:
                 now = time.time()
                 existing = {j["id"] for j in running + queued} | set(finished)
-                hist = _load_jobs_from_json(args.qstatx_json, user)
+                hist = _load_jobs_from_json(args.qstatx_json, user, "qstatx.json")
                 for job in hist:
                     if job["id"] in existing:
                         continue
                     finished.setdefault(job["id"], job)
                 existing.update(finished)
-                for job in _recent_finished_jobs(user, existing):
+                recent, total, updated_count = _recent_finished_jobs(user, existing)
+                if total:
+                    print(
+                        f"qselect detected {total} jobs; updated {updated_count}",
+                        file=sys.stderr,
+                    )
+                for job in recent:
                     finished.setdefault(job["id"], job)
                 finished_jobs = sorted(
                     finished.values(), key=lambda j: j.get("obittime") or j.get("mtime", 0), reverse=True
