@@ -270,6 +270,35 @@ def test_mqtop_reports_qselect_stats():
     assert row[header.index("source")] == "qselect/qstat -f"
 
 
+def test_history_loader_runs_in_background():
+    import runpy, time
+
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "bin" / "mqtop"
+    mod = runpy.run_path(str(script))
+
+    calls = []
+
+    def fake_load(path, user, source):
+        time.sleep(0.2)
+        calls.append(("load", source))
+        return [{"id": "1", "state": "F", "source": source}]
+
+    def fake_recent(user, existing):
+        calls.append(("recent", len(existing)))
+        return [], 0, 0
+
+    globs = mod["_start_history_loader"].__globals__
+    globs["_load_jobs_from_json"] = fake_load
+    globs["_recent_finished_jobs"] = fake_recent
+
+    thread, result = mod["_start_history_loader"]("dummy", "user", {"2"})
+    assert thread.is_alive()
+    thread.join()
+    assert result == {"1": {"id": "1", "state": "F", "source": "qstatx.json"}}
+    assert calls == [("load", "qstatx.json"), ("recent", 2)]
+
+
 def test_mqtop_profile(tmp_path):
     repo = Path(__file__).resolve().parents[1]
     script = repo / "bin" / "mqtop"

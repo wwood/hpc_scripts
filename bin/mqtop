@@ -17,6 +17,7 @@ import textwrap
 import json
 import getpass
 import shutil
+import threading
 from datetime import datetime, timedelta
 from importlib.machinery import SourceFileLoader
 
@@ -253,6 +254,40 @@ def _recent_finished_jobs(user: str, existing: set[str]) -> tuple[list[dict], in
             info["source"] = "qselect/qstat -f"
             jobs.append(info)
     return jobs, len(ids), len(jobs)
+
+
+def _load_history(qstatx_path: str, user: str, existing: set[str]) -> dict[str, dict]:
+    """Return finished jobs from qstatx and recent ``qselect`` results."""
+
+    finished: dict[str, dict] = {}
+    hist = _load_jobs_from_json(qstatx_path, user, "qstatx.json")
+    for job in hist:
+        if job["id"] in existing:
+            continue
+        finished[job["id"]] = job
+    existing = set(existing) | set(finished)
+    recent, total, updated_count = _recent_finished_jobs(user, existing)
+    if total:
+        print(
+            f"qselect detected {total} jobs; updated {updated_count}",
+            file=sys.stderr,
+        )
+    for job in recent:
+        finished.setdefault(job["id"], job)
+    return finished
+
+
+def _start_history_loader(qstatx_path: str, user: str, existing: set[str]):
+    """Start a background thread to load job history."""
+
+    result: dict[str, dict] = {}
+
+    def runner():
+        result.update(_load_history(qstatx_path, user, set(existing)))
+
+    thread = threading.Thread(target=runner, daemon=True)
+    thread.start()
+    return thread, result
 
 
 def grafana_url(job_id: str) -> str:
@@ -853,6 +888,8 @@ def main() -> None:
         fetch_history = False
         running = []
         queued = []
+        history_thread = None
+        history_result: dict[str, dict] = {}
 
         while True:
             maxy, maxx = stdscr.getmaxyx()
@@ -1025,46 +1062,42 @@ def main() -> None:
                     user_warn_until = time.time() + 5
                     active_jobs = active_jobs[:MAX_JOBS]
                     fetch_history = False
+                    history_thread = None
                 else:
                     user_warning = "Loading finished jobs..."
                     user_warn_until = float("inf")
+                    existing = {j["id"] for j in active_jobs} | set(finished)
+                    history_thread, history_result = _start_history_loader(
+                        args.qstatx_json, user, existing
+                    )
                     fetch_history = True
                 lines, job_rows = format_jobs(active_jobs, maxx, now=now)
                 max_line_width = max((visible_len(l) for l in lines), default=0)
                 last_refresh = time.time()
                 refresh = False
             elif fetch_history:
-                now = time.time()
-                existing = {j["id"] for j in running + queued} | set(finished)
-                hist = _load_jobs_from_json(args.qstatx_json, user, "qstatx.json")
-                for job in hist:
-                    if job["id"] in existing:
-                        continue
-                    finished.setdefault(job["id"], job)
-                existing.update(finished)
-                recent, total, updated_count = _recent_finished_jobs(user, existing)
-                if total:
-                    print(
-                        f"qselect detected {total} jobs; updated {updated_count}",
-                        file=sys.stderr,
+                if history_thread and not history_thread.is_alive():
+                    finished.update(history_result)
+                    history_result = {}
+                    finished_jobs = sorted(
+                        finished.values(),
+                        key=lambda j: j.get("obittime") or j.get("mtime", 0),
+                        reverse=True,
                     )
-                for job in recent:
-                    finished.setdefault(job["id"], job)
-                finished_jobs = sorted(
-                    finished.values(), key=lambda j: j.get("obittime") or j.get("mtime", 0), reverse=True
-                )
-                all_jobs = running + (queued if show_queued else []) + finished_jobs
-                if len(all_jobs) > MAX_JOBS:
-                    user_warning = f"More than {MAX_JOBS} jobs; showing first {MAX_JOBS}."
-                    user_warn_until = time.time() + 5
-                    all_jobs = all_jobs[:MAX_JOBS]
-                else:
-                    user_warning = None
-                    user_warn_until = 0
-                lines, job_rows = format_jobs(all_jobs, maxx, now=now)
-                max_line_width = max((visible_len(l) for l in lines), default=0)
-                fetch_history = False
-                last_refresh = time.time()
+                    all_jobs = running + (queued if show_queued else []) + finished_jobs
+                    if len(all_jobs) > MAX_JOBS:
+                        user_warning = f"More than {MAX_JOBS} jobs; showing first {MAX_JOBS}."
+                        user_warn_until = time.time() + 5
+                        all_jobs = all_jobs[:MAX_JOBS]
+                    else:
+                        user_warning = None
+                        user_warn_until = 0
+                    now = time.time()
+                    lines, job_rows = format_jobs(all_jobs, maxx, now=now)
+                    max_line_width = max((visible_len(l) for l in lines), default=0)
+                    fetch_history = False
+                    history_thread = None
+                    last_refresh = time.time()
 
             stdscr.erase()
             warning = None
