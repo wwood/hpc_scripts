@@ -1,0 +1,19 @@
+{
+  "timestamp": 0,
+  "pbs_version": "test",
+  "pbs_server": "server",
+  "Jobs": {
+    "123.server": {
+      "Job_Name": "dupjob",
+      "Job_Owner": "root@host",
+      "euser": "root",
+      "job_state": "F",
+      "queue": "cpu_batch_exec",
+      "Resource_List": {
+        "ncpus": 1,
+        "mem": "1gb",
+        "walltime": "01:00:00"
+      }
+    }
+  }
+}
