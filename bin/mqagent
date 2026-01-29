@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Interactive code-editing agent using a small LLaMA model.
+
+This script acts as a wrapper around an apptainer container that hosts
+`llama.cpp` (or any compatible runtime).  The outer script simply
+prepares the container with the current working directory writable and
+then re-executes itself inside the container with ``--internal`` set.
+
+Inside the container a very small LLaMA model is loaded via
+``llama-cpp-python``.  The model is prompted to emit a JSON description
+of actions to take.  Two types of actions are supported:
+
+* ``files`` – a list of ``{"path": str, "content": str}`` entries that
+  should be written relative to the current directory.
+* ``commands`` – a list of shell commands to execute.
+
+All state (conversation history and log of actions) is stored in a JSON
+file ``.mqagent_state.json`` in the working directory allowing a session
+to be continued on subsequent runs using the ``--resume`` flag.
+
+The remainder of the host filesystem is mounted read-only inside the
+container at ``/host`` so the model can reference files without the
+ability to modify them.  Only the current working directory is writable.
+
+The default container image is defined by the environment variable
+``MQAGENT_IMAGE`` and defaults to ``docker://ghcr.io/ggerganov/llama.cpp:light``
+which contains a minimal build of ``llama.cpp`` with Python bindings.  A
+quantised TinyLlama model can be specified with ``MQAGENT_MODEL``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List
+
+STATE_FILE = Path(".mqagent_state.json")
+
+
+def run_container(prompt: str, state_file: Path, resume: bool) -> int:
+    """Re-exec the current script inside an apptainer container.
+
+    Parameters
+    ----------
+    prompt: str
+        The prompt to send to the model.
+    state_file: Path
+        Path to the state file in the current working directory.
+    resume: bool
+        If True the state file is passed through so a previous session can be
+        continued.
+    """
+
+    image = os.environ.get(
+        "MQAGENT_IMAGE", "docker://ghcr.io/ggerganov/llama.cpp:light"
+    )
+    bind_pwd = f"{os.getcwd()}:/workspace"
+    bind_host = "/:/host:ro"
+    cmd = [
+        "apptainer",
+        "exec",
+        "--no-home",
+        "--writable-tmpfs",
+        "--bind",
+        bind_pwd,
+        "--bind",
+        bind_host,
+        "--pwd",
+        "/workspace",
+        image,
+        sys.argv[0],
+        "--internal",
+    ]
+    if resume:
+        cmd.append("--resume")
+    cmd.extend(["--state-file", str(state_file), prompt])
+    return subprocess.call(cmd)
+
+
+def load_state(state_path: Path) -> Dict[str, Any]:
+    if state_path.exists():
+        with state_path.open() as f:
+            return json.load(f)
+    return {"messages": [], "actions": []}
+
+
+def save_state(state_path: Path, state: Dict[str, Any]) -> None:
+    with state_path.open("w") as f:
+        json.dump(state, f, indent=2)
+
+
+def run_internal(prompt: str, state_path: Path, resume: bool) -> int:
+    """Execute the LLM loop inside the container."""
+    try:
+        from llama_cpp import Llama  # type: ignore
+    except Exception as exc:  # pragma: no cover - imported in container
+        print("llama_cpp not available inside container:", exc, file=sys.stderr)
+        return 1
+
+    model_path = os.environ.get(
+        "MQAGENT_MODEL", "TinyLlama-1.1B-Chat-v1.0.Q4_K_M.gguf"
+    )
+    llm = Llama(model_path=model_path, n_ctx=2048)
+
+    state = load_state(state_path)
+    if not resume:
+        state = {"messages": [], "actions": []}
+    state["messages"].append({"role": "user", "content": prompt})
+
+    system_prompt = (
+        "You are a code-editing agent.  Respond in JSON with two keys: "
+        "'files' (a list of objects with 'path' and 'content') and "
+        "'commands' (a list of shell commands)."
+    )
+    conversation: List[Dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+        *state["messages"],
+    ]
+
+    completion = llm.create_chat_completion(messages=conversation)
+    reply = completion["choices"][0]["message"]["content"]
+    state["messages"].append({"role": "assistant", "content": reply})
+
+    try:
+        data = json.loads(reply)
+    except json.JSONDecodeError:
+        print("Model did not return valid JSON:")
+        print(reply)
+        save_state(state_path, state)
+        return 1
+
+    summary: List[str] = []
+    for file_entry in data.get("files", []):
+        path = Path(file_entry["path"])  # type: ignore[index]
+        content = file_entry.get("content", "")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w") as f:
+            f.write(content)
+        summary.append(f"Edited {path}")
+        state["actions"].append({"type": "file", "path": str(path)})
+
+    for command in data.get("commands", []):
+        print(f"$ {command}")
+        subprocess.call(command, shell=True)
+        summary.append(f"Ran {command}")
+        state["actions"].append({"type": "command", "command": command})
+
+    save_state(state_path, state)
+    print("\nSummary:")
+    for line in summary:
+        print(" - " + line)
+    return 0
+
+
+def main(argv: List[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("prompt", help="Prompt for the agent")
+    parser.add_argument(
+        "--internal",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Continue from previous state file",
+    )
+    parser.add_argument(
+        "--state-file",
+        default=STATE_FILE,
+        type=Path,
+        help="Path to state file",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.internal:
+        return run_container(args.prompt, args.state_file, args.resume)
+    return run_internal(args.prompt, args.state_file, args.resume)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
